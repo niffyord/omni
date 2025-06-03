@@ -332,9 +332,6 @@ def get_derivatives_metrics(symbol: str):
     }
     return metrics
 
-    from derivatives_metrics_scheduler import summarize_derivatives_metrics
-    return summarize_derivatives_metrics(metrics)
-
 def get_live_derivatives_metrics(symbol: str):
     """
     Fetches the derivatives metrics for the given symbol directly from Bybit (live),
