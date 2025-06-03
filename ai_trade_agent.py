@@ -317,6 +317,10 @@ def get_market_context(symbol: str, timeframes: list[str]) -> dict:
     try:
         import timescaledb_tools
         ctx.update(timescaledb_tools.get_all_history_series_py())
+        win = {}
+        for tf in timeframes:
+            win[tf] = timescaledb_tools.get_last_n_indicators_py(symbol, tf, 30)
+        ctx["indicator_window"] = win
     except Exception as e:
         ctx["history_series_error"] = str(e)
 
@@ -519,12 +523,15 @@ Mission — four mandatory steps
       ctx_json = get_market_context()  
    (Work exclusively with that payload; no fabricated data.)
 
-2. Engineer an edge  
-   • Build whatever model(s) you judge best: Bayesian nets, tree ensembles, logistic regression, clustering + Markov chains, regime-switching vol models, etc.  
+2. Engineer an edge
+   • Build whatever model(s) you judge best: Bayesian nets, tree ensembles, logistic regression, clustering + Markov chains, regime-switching vol models, etc.
    • Start by creating a continuous evidence score and transform it into
      probabilities with a **soft-max or calibrated logistic** conversion
-     (no hard-coded rule tables).  
-   • Feature engineering, back-tests, Monte-Carlo scenarios, risk metrics — all inside python.  
+     (no hard-coded rule tables).
+   • Feature engineering, back-tests, Monte-Carlo scenarios, risk metrics — all inside python.
+   • Use both short and long look-back windows (e.g., last 100–300 bars and ~20–30 days) so the model captures near-term momentum and broader regime shifts.
+   • Seed any stochastic operations (e.g., `np.random.seed(42)`) to keep results reproducible across cycles.
+   • Factor in `last_signal` and `last_position_summary` when designing the edge to avoid conflict with existing trades.
    • Over-fit guards: walk-forward split, k-fold CV, AIC/BIC, or similar.  Note your safeguard briefly in the rationale.
 
 3. Produce the JSON object below and `print` it — **nothing else**.  

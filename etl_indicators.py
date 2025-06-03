@@ -21,6 +21,7 @@ SYMBOL         = os.getenv("SYMBOL", "CORE/USDT:USDT")
 TF_LIST        = ["1m", "5m", "15m", "1h", "4h", "1d"]
 LIMIT          = 200
 HISTORY_LENGTH = int(os.getenv("HISTORY_LENGTH", 200))  # Increased from 7 to 30 for richer historical context
+LOOKBACK_WINDOW = int(os.getenv("LOOKBACK_WINDOW", 30))  # uniform model look-back
 
 DB_URL         = os.getenv("TIMESCALEDB_URL")
 API_KEY        = os.getenv("BYBIT_API_KEY")
@@ -209,14 +210,17 @@ CORE_FIELDS = {
     # --- high-impact TA features ---
     "eth_core_corr_30", "atr10_sigma30_ratio", "close_vs_vwap_pct", "day_range_pct", "vol_percentile_20", "trailing_max_dd_20",
     # --- leverage/seasonality features ---
-    "roll_hl_pct", "streak_dir_5", "rvi_14", "obv_slope_20", "hour_sin", "hour_cos"
+    "roll_hl_pct", "streak_dir_5", "rvi_14", "obv_slope_20",
+    "macd", "macd_signal", "macd_hist", "stoch_k", "stoch_d", "cci20", "mfi14"
 }
 ENABLE = {k: True for k in CORE_FIELDS}
 ENABLE.update({
     "atr10": True, "atr_ratio": True, "bb_width": True, "dollar_vol": True, "sigma30_pctile": True, "ema_fast_slope": True, "ema_slow_slope": True,
     "return_1h": True, "return_4h": True, "atr10d_ratio": True,
     "eth_core_corr_30": True, "atr10_sigma30_ratio": True, "close_vs_vwap_pct": True, "day_range_pct": True, "vol_percentile_20": True, "trailing_max_dd_20": True,
-    "roll_hl_pct": True, "streak_dir_5": True, "rvi_14": True, "obv_slope_20": True, "hour_sin": True, "hour_cos": True
+    "roll_hl_pct": True, "streak_dir_5": True, "rvi_14": True, "obv_slope_20": True,
+    "macd": True, "macd_signal": True, "macd_hist": True,
+    "stoch_k": True, "stoch_d": True, "cci20": True, "mfi14": True
 })
 
 def compute(ohlcv: list[list[float]], tf: str, eth_close_series=None) -> dict:
@@ -420,13 +424,35 @@ def compute(ohlcv: list[list[float]], tf: str, eth_close_series=None) -> dict:
     else:
         out["obv_slope_20"] = None
 
-    # hour_sin, hour_cos
-    if "hour" in out and out["hour"] is not None:
-        out["hour_sin"] = float(np.sin(2 * np.pi * out["hour"] / 24))
-        out["hour_cos"] = float(np.cos(2 * np.pi * out["hour"] / 24))
-    else:
-        out["hour_sin"] = None
-        out["hour_cos"] = None
+
+    # MACD
+    try:
+        macd, macd_signal, macd_hist = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
+        out["macd"] = float(macd.iat[-1])
+        out["macd_signal"] = float(macd_signal.iat[-1])
+        out["macd_hist"] = float(macd_hist.iat[-1])
+    except Exception:
+        out["macd"] = out["macd_signal"] = out["macd_hist"] = None
+
+    # Stochastic Oscillator
+    try:
+        slowk, slowd = talib.STOCH(high, low, close)
+        out["stoch_k"] = float(slowk.iat[-1])
+        out["stoch_d"] = float(slowd.iat[-1])
+    except Exception:
+        out["stoch_k"] = out["stoch_d"] = None
+
+    # CCI (20)
+    try:
+        out["cci20"] = float(talib.CCI(high, low, close, 20).iat[-1])
+    except Exception:
+        out["cci20"] = None
+
+    # Money Flow Index (14)
+    try:
+        out["mfi14"] = float(talib.MFI(high, low, close, volume, 14).iat[-1])
+    except Exception:
+        out["mfi14"] = None
 
     # Close vs VWAP %
     out["close_vs_vwap_pct"] = ((out["last_close"] / out["vwap"] - 1) * 100) if out.get("vwap") else None
