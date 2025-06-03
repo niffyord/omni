@@ -314,12 +314,12 @@ def get_market_context(symbol: str, timeframes: list[str]) -> dict:
     except Exception as e:
         ctx["indicators_error"] = str(e)
 
-    # --- Historical volatility & BB width series for BTC/ETH, all TFs ---
+    # --- Historical BB width series for BTC/ETH, all TFs ---
     try:
         import timescaledb_tools
-        ctx.update(timescaledb_tools.get_all_history_series_py())
+        # Only include indicator_window (no bb_series, no vol_state)
         win = {}
-        window_size = int(os.getenv("INDICATOR_WINDOW_SIZE", 10))
+        window_size = int(os.getenv("INDICATOR_WINDOW_SIZE", 5))
         for tf in timeframes:
             win[tf] = timescaledb_tools.get_last_n_indicators_py(symbol, tf, window_size)
         ctx["indicator_window"] = win
