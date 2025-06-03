@@ -81,6 +81,25 @@ def get_last_n_vol_state(symbol: str, timeframe: str, n: int = 30) -> list:
     conn.close()
     return [float(r[0]) for r in rows if r[0] is not None]
 
+@function_tool
+def get_last_n_indicators(symbol: str, timeframe: str, n: int = 30) -> list:
+    """Return the last n indicator rows for a symbol/timeframe."""
+    tf_map = {"1 m": "1m", "5 m": "5m", "15 m": "15m", "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
+    timeframe = tf_map.get(timeframe.strip(), timeframe.replace(" ", ""))
+    conn = get_timescaledb_conn()
+    cur = conn.cursor()
+    cur.execute(
+        '''SELECT indicators FROM market_indicators
+           WHERE symbol = %s AND timeframe = %s
+           ORDER BY timestamp DESC LIMIT %s''',
+        (symbol, timeframe, n)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    # Return oldest first for easier modeling
+    return [r[0] for r in rows[::-1]]
+
 def _get_all_history_series(n_max_ratio: int = 30, n_bb_width: int = 20) -> dict:
     """
     Fetch all historical series for CORE and ETH (1h, 4h, 1d):
@@ -134,3 +153,4 @@ def _get_all_history_series(n_max_ratio: int = 30, n_bb_width: int = 20) -> dict
 
 get_all_history_series = function_tool(_get_all_history_series)
 get_all_history_series_py = _get_all_history_series
+get_last_n_indicators_py = get_last_n_indicators
