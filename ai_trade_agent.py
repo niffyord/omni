@@ -24,7 +24,7 @@ except ImportError:
 import ccxt
 # Updated agents import for AgentHooks, RunContextWrapper, trace, Tool
 from agents import Agent, ModelSettings, Runner, function_tool, handoff, AgentHooks, RunContextWrapper, trace, Tool
-from timescaledb_tools import _get_latest_indicators_multi, get_last_n_indicators
+from timescaledb_tools import _get_latest_indicators_multi
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from tools import get_orderbook_snapshot, get_derivatives_metrics
 
