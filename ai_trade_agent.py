@@ -319,8 +319,9 @@ def get_market_context(symbol: str, timeframes: list[str]) -> dict:
         import timescaledb_tools
         ctx.update(timescaledb_tools.get_all_history_series_py())
         win = {}
+        window_size = int(os.getenv("INDICATOR_WINDOW_SIZE", 10))
         for tf in timeframes:
-            win[tf] = timescaledb_tools.get_last_n_indicators_py(symbol, tf, 30)
+            win[tf] = timescaledb_tools.get_last_n_indicators_py(symbol, tf, window_size)
         ctx["indicator_window"] = win
     except Exception as e:
         ctx["history_series_error"] = str(e)
