@@ -2,16 +2,16 @@
 Light-weight BTC Momentum ETL Pipeline (v0.1)
 ============================================
 Calculates a minimal momentum context for BTC/USDT so that the ETH trader can
-avoid trading against broad-market direction.
+avoid trading against broad‑market direction.
 
-• Indicators: EMA-8/21, RSI-14, MACD histogram  (computed across 6 key timeframes)
-• Additional cross-asset metrics added:
+• Indicators on BTC: EMA‑8/21, RSI‑14 and MACD histogram.
+• Additional cross‑asset metrics:
     – eth_btc_ratio  (ETH price / BTC price)
-    – btc_eth_corr   (Pearson corr of last N returns, N=30)
+    – btc_eth_corr   (Pearson correlation of recent returns, N=30)
     – btc_volume_dom (BTC volume dominance vs ETH)
     – atr, bb_width, hv_ann, rsi_vol, macd_norm
 • Timeframes processed by default: 1m, 5m, 15m, 1h, 4h, 1d
-• Derived flag: eth_momentum = bullish / bearish / neutral
+• Derived flag: btc_momentum = bullish / bearish / neutral
 • Stores one JSONB row per timeframe into the existing TimescaleDB table
   `market_indicators` so existing read helpers work unchanged.
 
@@ -175,20 +175,19 @@ def _summarise(metrics: dict) -> str:
                     kv.append(f"{name}={val}")
 
     # Ordered, comprehensive list of fields
-    add("eth_momentum", "momentum", "{}")
-    add("eth_rsi", "rsi", "{:.1f}")
+    add("btc_momentum", "momentum", "{}")
+    add("btc_rsi", "rsi", "{:.1f}")
     add("rsi_vol", "rsi_vol", "{:.1f}")
-    add("eth_macd", "macd", "{:.3f}")
-    add("eth_macd_signal", "macd_sig", "{:.3f}")
+    add("btc_macd", "macd", "{:.3f}")
+    add("btc_macd_signal", "macd_sig", "{:.3f}")
     add("macd_norm", "macd_norm", "{:.3f}")
-    add("eth_ema_fast", "ema_fast", "{:.2f}")
-    add("eth_ema_slow", "ema_slow", "{:.2f}")
+    add("btc_ema_fast", "ema_fast", "{:.2f}")
+    add("btc_ema_slow", "ema_slow", "{:.2f}")
     add("atr", "atr", "{:.2f}")
     add("hv_ann", "hv", "{:.4f}")
     add("bb_width", "bb_width", "{:.4f}")
     add("eth_btc_ratio", "eth_btc_ratio", "{:.6f}")
     add("btc_eth_corr", "corr", "{:.3f}")
-    add("btc_eth_corr_dyn", "corr_dyn", "{:.3f}")
     add("btc_volume_dom", "vol_dom", "{:.4f}")
     add("last_close_eth", "last_eth", "{:.2f}")
     add("last_close_btc", "last_btc", "{:.2f}")
@@ -242,12 +241,12 @@ def contextualize_metrics(metrics):
     # Group indicators for clarity
     out = []
     # --- Momentum ---
-    mom = metrics.get('eth_momentum', 'N/A')
-    rsi = metrics.get('eth_rsi', 'N/A')
-    macd = metrics.get('eth_macd', 'N/A')
-    macd_sig = metrics.get('eth_macd_signal', 'N/A')
-    ema_fast = metrics.get('eth_ema_fast', 'N/A')
-    ema_slow = metrics.get('eth_ema_slow', 'N/A')
+    mom = metrics.get('btc_momentum', 'N/A')
+    rsi = metrics.get('btc_rsi', 'N/A')
+    macd = metrics.get('btc_macd', 'N/A')
+    macd_sig = metrics.get('btc_macd_signal', 'N/A')
+    ema_fast = metrics.get('btc_ema_fast', 'N/A')
+    ema_slow = metrics.get('btc_ema_slow', 'N/A')
     out.append(f"Momentum: {mom} (RSI={f(rsi)} | MACD={f(macd)} vs Signal={f(macd_sig)} | EMA Fast={f(ema_fast)} vs Slow={f(ema_slow)})")
     # --- Volatility ---
     atr = metrics.get('atr', 'N/A')
@@ -263,18 +262,13 @@ def contextualize_metrics(metrics):
     out.append(f"Price: ETH={f(price)} | BTC={f(price_btc)} | ETH/BTC Ratio={f(eth_btc_ratio,6)}")
     # --- Correlation ---
     corr = metrics.get('btc_eth_corr', 'N/A')
-    corr_dyn = metrics.get('btc_eth_corr_dyn', 'N/A')
-    out.append(f"Correlation: BTC/ETH Corr={f(corr,3)}, Dynamic Corr={f(corr_dyn,3)}")
+    out.append(f"Correlation: BTC/ETH Corr={f(corr,3)}")
     # --- Volume ---
     vol_dom = metrics.get('btc_volume_dom', 'N/A')
-    vol_dom_5ago = metrics.get('btc_volume_dom_5ago', 'N/A')
-    vol_dom_slope = metrics.get('btc_volume_dom_slope_5', 'N/A')
-    out.append(f"Volume: Dominance={f(vol_dom,4)}, 5 bars ago={f(vol_dom_5ago,4)}, Slope={f(vol_dom_slope,+4)}")
+    out.append(f"Volume: Dominance={f(vol_dom,4)}")
     # --- Risk ---
     atr10d_ratio = metrics.get('atr10d_ratio', 'N/A')
-    atr10d_ratio_med30 = metrics.get('atr10d_ratio_med30', 'N/A')
-    atr10d_ratio_slope = metrics.get('atr10d_ratio_slope_5', 'N/A')
-    out.append(f"Risk: ATR10d Ratio={f(atr10d_ratio,6)} (Median30={f(atr10d_ratio_med30,6)}), Slope={f(atr10d_ratio_slope,+6)}")
+    out.append(f"Risk: ATR10d Ratio={f(atr10d_ratio,6)}")
     # --- Trend/History ---
 def compute_metrics(btc_ohlcv: List[List[float]], eth_ohlcv: List[List[float]], tf: str) -> dict:
     """Return momentum + cross-asset & vol metrics for a single timeframe, with short-term history deltas."""
@@ -302,7 +296,7 @@ def compute_metrics(btc_ohlcv: List[List[float]], eth_ohlcv: List[List[float]], 
             pass
         return None
     last_atr = last_value(atr_series)
-    last_close = float(close_eth[-1])
+    last_close = float(close_btc[-1])
     atr_ratio = last_atr / last_close if last_close else None
     scale = {"1h": 24, "4h": 6, "1d": 1}.get(tf, None)
     if scale is not None and atr_ratio is not None:
@@ -310,24 +304,32 @@ def compute_metrics(btc_ohlcv: List[List[float]], eth_ohlcv: List[List[float]], 
     else:
         max_atr_ratio_comp = None
 
-    # Momentum indicators on ETH
+    # Momentum indicators on BTC
     ema_fast = None
     ema_slow = None
     rsi = None
+    macd = None
+    macd_sig = None
+    macd_hist = None
     # Compute indicators only if enough data
-    if len(close_eth) > 20 and tf not in {"4h", "1d"}:
+    if len(close_btc) > 30 and tf not in {"4h", "1d"}:
+        arr = np.array(close_btc, dtype=float)
         try:
-            ema_fast = talib.EMA(np.array(close_eth), timeperiod=8)
+            ema_fast = talib.EMA(arr, timeperiod=8)
         except Exception:
             ema_fast = None
         try:
-            ema_slow = talib.EMA(np.array(close_eth), timeperiod=21)
+            ema_slow = talib.EMA(arr, timeperiod=21)
         except Exception:
             ema_slow = None
         try:
-            rsi = talib.RSI(np.array(close_eth), timeperiod=14)
+            rsi = talib.RSI(arr, timeperiod=14)
         except Exception:
             rsi = None
+        try:
+            macd, macd_sig, macd_hist = talib.MACD(arr, fastperiod=12, slowperiod=26, signalperiod=9)
+        except Exception:
+            macd = macd_sig = macd_hist = None
 
     def last_value(arr):
         try:
@@ -345,6 +347,9 @@ def compute_metrics(btc_ohlcv: List[List[float]], eth_ohlcv: List[List[float]], 
     last_ema_fast = last_value(ema_fast)
     last_ema_slow = last_value(ema_slow)
     last_rsi      = last_value(rsi)
+    last_macd     = last_value(macd)
+    last_macd_sig = last_value(macd_sig)
+    last_macd_hist = last_value(macd_hist)
 
     # Momentum classification
     if (
@@ -368,11 +373,9 @@ def compute_metrics(btc_ohlcv: List[List[float]], eth_ohlcv: List[List[float]], 
     if minutes == 0:
         minutes = 1
     ann_factor = (525_600 / minutes) ** 0.5  # sqrt of bars per year
-    hv_ann = float(np.std(np.diff(close_eth)) * ann_factor) if len(close_eth) > 5 else None
+    hv_ann = float(np.std(np.diff(close_btc)) * ann_factor) if len(close_btc) > 5 else None
 
-    # ATR (14)
-    atr_series = talib.ATR(np.array(high_btc), np.array(low_btc), np.array(close_btc), 14)
-    last_atr = last_value(atr_series)
+    # ATR (14) already computed above
 
     # Volume dominance
     btc_volume_dom = None
@@ -389,14 +392,38 @@ def compute_metrics(btc_ohlcv: List[List[float]], eth_ohlcv: List[List[float]], 
     except Exception:
         base_corr = None
 
+    bb_width_val = None
+    if len(close_btc) >= 20:
+        try:
+            upper, middle, lower = talib.BBANDS(np.array(close_btc), 20)
+            bb_width_val = float((upper[-1] - lower[-1]) / middle[-1])
+        except Exception:
+            bb_width_val = None
+
+    rsi_vol_val = None
+    if len(close_btc) >= 28:
+        try:
+            rsi_series = talib.RSI(np.array(close_btc), 14)
+            rsi_vol_val = float(np.std(rsi_series[-14:]))
+        except Exception:
+            rsi_vol_val = None
+
     metrics = {
         "timestamp": int(btc_ohlcv[-1][0]),
-        "eth_momentum": momentum,
+        "btc_momentum": momentum,
+        "btc_rsi": last_rsi,
+        "btc_macd": last_macd,
+        "btc_macd_signal": last_macd_sig,
+        "macd_norm": (last_macd_hist / last_close) if (last_macd_hist is not None and last_close) else None,
+        "btc_ema_fast": last_ema_fast,
+        "btc_ema_slow": last_ema_slow,
+        "rsi_vol": rsi_vol_val,
         "eth_btc_ratio": eth_btc_ratio,
         "btc_eth_corr": base_corr,
         "btc_volume_dom": btc_volume_dom,
         "hv_ann": hv_ann,
         "atr": last_atr,
+        "bb_width": bb_width_val,
         "last_close_eth": float(close_eth[-1]),
         "last_close_btc": float(close_btc[-1]),
         "atr_ratio": atr_ratio,
