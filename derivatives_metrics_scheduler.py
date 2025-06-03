@@ -116,6 +116,18 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     perp_spot_basis_pct  DOUBLE PRECISION,
     eth_btc_funding_spread DOUBLE PRECISION,
     funding_z            DOUBLE PRECISION,
+    oi_5m_delta_pct      DOUBLE PRECISION,
+    oi_15m_delta_pct     DOUBLE PRECISION,
+    oi_4h_delta_pct      DOUBLE PRECISION,
+    ls_5m_delta_pct      DOUBLE PRECISION,
+    ls_15m_delta_pct     DOUBLE PRECISION,
+    ls_4h_delta_pct      DOUBLE PRECISION,
+    oi_z_24h            DOUBLE PRECISION,
+    funding_8h_avg       DOUBLE PRECISION,
+    perp_quarterly_basis_pct DOUBLE PRECISION,
+    basis_annualised     DOUBLE PRECISION,
+    liq_imbalance_8h     DOUBLE PRECISION,
+    oi_turnover_ratio    DOUBLE PRECISION,
     PRIMARY KEY (symbol, timestamp)
 );
 SELECT create_hypertable('{TABLE_NAME}','timestamp', if_not_exists=>TRUE);
