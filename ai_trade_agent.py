@@ -287,7 +287,7 @@ def get_current_price(symbol: str) -> float:
     return float(ticker["last"])
 
 
-    # ──────────────────────────────────────────────────────────────────────────────
+      # ──────────────────────────────────────────────────────────────────────────────
 #  ONE‑SHOT DATA TOOL  →  replaces 3 separate calls
 # ──────────────────────────────────────────────────────────────────────────────
 @function_tool
@@ -352,6 +352,7 @@ def get_market_context(symbol: str, timeframes: list[str]) -> dict:
         ctx["derivatives_error"] = str(e)
 
     return ctx
+
 
 
 execution_agent = Agent(
@@ -524,15 +525,15 @@ Mission — four mandatory steps
       ctx_json = get_market_context()  
    (Work exclusively with that payload; no fabricated data.)
 
-2. Engineer an edge
-   • Build whatever model(s) you judge best: Bayesian nets, tree ensembles, logistic regression, clustering + Markov chains, regime-switching vol models, etc.
+2. Engineer an edge  
+   • Build whatever model(s) you judge best: Bayesian nets, tree ensembles, logistic regression, clustering + Markov chains, regime-switching vol models, etc.  
    • Start by creating a continuous evidence score and transform it into
      probabilities with a **soft-max or calibrated logistic** conversion
-     (no hard-coded rule tables).
+     (no hard-coded rule tables).  
    • Feature engineering, back-tests, Monte-Carlo scenarios, risk metrics — all inside python.
-   • Use both short and long look-back windows (e.g., last 100–300 bars and ~20–30 days) so the model captures near-term momentum and broader regime shifts.
+   • Use the look-back data to capture near-term momentum and broader regime shifts.
    • Seed any stochastic operations (e.g., `np.random.seed(42)`) to keep results reproducible across cycles.
-   • Factor in `last_signal` and `last_position_summary` when designing the edge to avoid conflict with existing trades.
+   • Factor in `last_signal` and `last_position_summary` when designing the edge to see how previous siganl and trade performed.  
    • Over-fit guards: walk-forward split, k-fold CV, AIC/BIC, or similar.  Note your safeguard briefly in the rationale.
 
 3. Produce the JSON object below and `print` it — **nothing else**.  
@@ -603,10 +604,9 @@ technical_analyst = Agent(
     handoff_description="Analyses data and hands off a trade idea.",
     handoffs=[handoff(execution_agent, on_handoff=on_ta_handoff, input_filter=handoff_filters.remove_all_tools)],
     output_type=TechnicalAnalystOutput,
-   instructions=technical_analyst_instructions,
+    instructions=technical_analyst_instructions,
    tools=[
         get_market_context,
-        get_last_n_indicators,
         CodeInterpreterTool(tool_config={"type": "code_interpreter", "container": {"type": "auto"}})
     ],
     model="gpt-4.1", # Kept gpt-4.1 as it needs to produce complex analysis
