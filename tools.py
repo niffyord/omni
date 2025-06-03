@@ -182,6 +182,14 @@ def get_orderbook_snapshot(symbol: str = "ETH/USDT:USDT"):
     if not data:
         raise RuntimeError("Malformed orderbook entry in Redis")
     snap = json.loads(data)
+    # Trim heavy arrays to keep context lightweight
+    for key in ["history", "depth_heat_bid", "depth_heat_ask"]:
+        if key in snap:
+            # Keep only last 10 history entries if present
+            if key == "history" and isinstance(snap[key], list):
+                snap[key] = snap[key][-10:]
+            else:
+                snap.pop(key, None)
     return snap
 
 def get_derivatives_metrics(symbol: str):
