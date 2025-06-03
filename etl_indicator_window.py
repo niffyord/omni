@@ -5,10 +5,10 @@ from typing import List
 from dotenv import load_dotenv
 import ccxt
 
-from etl_indicators import compute, CORE_FIELDS, write_rows, ensure_table
+from etl_indicators import compute, ETH_FIELDS, write_rows, ensure_table
 
 load_dotenv()
-SYMBOL = os.getenv("SYMBOL", "CORE/USDT:USDT")
+SYMBOL = os.getenv("SYMBOL", "ETH/USDT:USDT")
 TF_LIST = ["1m", "5m", "15m", "1h", "4h", "1d"]
 LOOKBACK_WINDOW = int(os.getenv("LOOKBACK_WINDOW", 30))
 FETCH_LIMIT = int(os.getenv("LOOKBACK_FETCH_LIMIT", 120))
@@ -39,7 +39,7 @@ async def refresh_window() -> None:
                 ind = compute(window, tf)
                 if "error" in ind:
                     continue
-                for fld in CORE_FIELDS:
+                for fld in ETH_FIELDS:
                     ind.setdefault(fld, None)
                 for k, v in ind.items():
                     if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):

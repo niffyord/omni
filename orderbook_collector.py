@@ -1,5 +1,5 @@
 """
-CORE/USDT Order-Book + Trades Collector – v0.8
+ETH/USDT Order-Book + Trades Collector – v0.8
 ──────────────────────────────────────────────────────────────────────────────
 Δ v0.7 ➜ v0.8
 • **Trade-side normalisation**  (“Buy” / “Sell” → “buy” / “sell”)
@@ -20,7 +20,7 @@ import redis
 # ──────────────────────────────────────────────
 # CONFIG (env-overridable)
 # ──────────────────────────────────────────────
-SYMBOL           = os.getenv("SYMBOL",          "CORE/USDT:USDT")
+SYMBOL           = os.getenv("SYMBOL",          "ETH/USDT:USDT")
 BYBIT_MARKET     = SYMBOL
 DEPTH          = int(os.getenv("DEPTH", 500))        # Bybit max L2 (supported: 1, 50, 200, 500)
 TICK_SIZE      = float(os.getenv("TICK_SIZE", 0.0001))

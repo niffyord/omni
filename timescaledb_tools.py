@@ -102,28 +102,28 @@ def get_last_n_indicators(symbol: str, timeframe: str, n: int = 30) -> list:
 
 def _get_all_history_series(n_max_ratio: int = 30, n_bb_width: int = 20) -> dict:
     """
-    Fetch all historical series for CORE and ETH (1h, 4h, 1d):
+    Fetch all historical series for ETH and BTC (1h, 4h, 1d):
       - max_atr_ratio_comp (last 30)
-      - bb_width (last 20, CORE only)
+      - bb_width (last 20, ETH only)
     Returns a dict for direct use in market context:
       {
         'vol_state': {
-           'CORE': {'max_ratio_last30_1h': [...], ...},
-           'ETH': {'max_ratio_last30_1h': [...], ...}
+           'ETH': {'max_ratio_last30_1h': [...], ...},
+           'BTC': {'max_ratio_last30_1h': [...], ...}
         },
         'bb_series': {
            '1h': {'bb_width_last20': [...]}, ...
         }
       }
     """
-    symbols = ["CORE/USDT:USDT", "ETH/USDT:USDT"]
+    symbols = ["ETH/USDT:USDT", "BTC/USDT:USDT"]
     tfs = ["1h", "4h", "1d"]
-    ctx = {"vol_state": {"CORE": {}, "ETH": {}}, "bb_series": {}}
+    ctx = {"vol_state": {"ETH": {}, "BTC": {}}, "bb_series": {}}
     conn = get_timescaledb_conn()
     cur = conn.cursor()
     tf_map = {"1 m": "1m", "5 m": "5m", "15 m": "15m", "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
     for symbol in symbols:
-        sym_key = "CORE" if symbol.startswith("CORE") else "ETH"
+        sym_key = "ETH" if symbol.startswith("ETH") else "BTC"
         for tf in tfs:
             # max_atr_ratio_comp
             cur.execute('''
@@ -134,8 +134,8 @@ def _get_all_history_series(n_max_ratio: int = 30, n_bb_width: int = 20) -> dict
             ''', (symbol, tf, n_max_ratio))
             rows = cur.fetchall()
             ctx["vol_state"][sym_key][f"max_ratio_last{n_max_ratio}_{tf}"] = [float(r[0]) for r in rows if r[0] is not None]
-            # bb_width (CORE only)
-            if sym_key == "CORE":
+            # bb_width (ETH only)
+            if sym_key == "ETH":
                 cur.execute('''
                     SELECT bb_width
                     FROM bb_width_metrics

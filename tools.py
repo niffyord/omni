@@ -152,7 +152,7 @@ def fetch_long_short_ratio(symbol):
     base_url = "https://api.bybit.com/v5/market/account-ratio"
     params = {
         "category": "linear",
-        "symbol": symbol.replace("/USDT:USDT", "USDT").replace("/", ""),  # e.g. COREUSDT
+        "symbol": symbol.replace("/USDT:USDT", "USDT").replace("/", ""),  # e.g. ETHUSDT
         "period": "1h",
         "limit": 1
     }
@@ -196,7 +196,7 @@ def get_derivatives_metrics(symbol: str):
                 """SELECT funding_rate, open_interest, oi_1h_delta_pct,
                           long_short_ratio, buy_ratio, sell_ratio,
                           funding_price_div, perp_spot_basis_pct,
-                          core_eth_funding_spread, liquidation_8h_long, liquidation_8h_short,
+                          eth_btc_funding_spread, liquidation_8h_long, liquidation_8h_short,
                           timestamp,
                           oi_5m_delta_pct, oi_15m_delta_pct, oi_4h_delta_pct,
                           ls_5m_delta_pct, ls_15m_delta_pct, ls_4h_delta_pct,
@@ -220,7 +220,7 @@ def get_derivatives_metrics(symbol: str):
                 "funding_rate", "open_interest", "oi_1h_delta_pct",
                 "long_short_ratio", "buy_ratio", "sell_ratio",
                 "funding_price_div", "perp_spot_basis_pct",
-                "core_eth_funding_spread", "liquidation_8h_long", "liquidation_8h_short",
+                "eth_btc_funding_spread", "liquidation_8h_long", "liquidation_8h_short",
                 "timestamp",
                 "oi_5m_delta_pct", "oi_15m_delta_pct", "oi_4h_delta_pct",
                 "ls_5m_delta_pct", "ls_15m_delta_pct", "ls_4h_delta_pct",
@@ -281,26 +281,26 @@ def get_derivatives_metrics(symbol: str):
     funding_price_div = _funding_price_divergence(symbol, funding_rate)
     # --- Perp-spot basis pct ---
     try:
-        spot_price = _BYBIT_SPOT.fetch_ticker("CORE/USDT")["last"]
-        perp_price = _BYBIT_LINEAR.fetch_ticker("CORE/USDT:USDT")["last"]
+        spot_price = _BYBIT_SPOT.fetch_ticker("ETH/USDT")["last"]
+        perp_price = _BYBIT_LINEAR.fetch_ticker("ETH/USDT:USDT")["last"]
         if spot_price and perp_price:
             perp_spot_basis_pct = (perp_price / spot_price - 1) * 100
         else:
             perp_spot_basis_pct = None
     except Exception:
         perp_spot_basis_pct = None
-    # --- CORE-ETH funding spread ---
+    # --- BTC-ETH funding spread ---
     try:
-        core_funding = funding_rate
-        eth_funding = None
-        eth_funding_resp = _BYBIT_LINEAR.fetch_funding_rate("ETH/USDT:USDT")
-        eth_funding = eth_funding_resp.get("fundingRate")
-        if core_funding is not None and eth_funding is not None:
-            core_eth_funding_spread = core_funding - eth_funding
+        eth_funding = funding_rate
+        btc_funding = None
+        btc_funding_resp = _BYBIT_LINEAR.fetch_funding_rate("BTC/USDT:USDT")
+        btc_funding = btc_funding_resp.get("fundingRate")
+        if eth_funding is not None and btc_funding is not None:
+            eth_btc_funding_spread = eth_funding - btc_funding
         else:
-            core_eth_funding_spread = None
+            eth_btc_funding_spread = None
     except Exception:
-        core_eth_funding_spread = None
+        eth_btc_funding_spread = None
     # Liquidation stats (not available live here)
     liquidation_8h_long = None
     liquidation_8h_short = None
@@ -313,7 +313,7 @@ def get_derivatives_metrics(symbol: str):
         "sell_ratio": sell_ratio,
         "funding_price_div": funding_price_div,
         "perp_spot_basis_pct": perp_spot_basis_pct,
-        "core_eth_funding_spread": core_eth_funding_spread,
+        "eth_btc_funding_spread": eth_btc_funding_spread,
         "oi_5m_delta_pct": oi_5m_delta_pct if 'oi_5m_delta_pct' in locals() else None,
         "oi_15m_delta_pct": oi_15m_delta_pct if 'oi_15m_delta_pct' in locals() else None,
         "oi_4h_delta_pct": oi_4h_delta_pct if 'oi_4h_delta_pct' in locals() else None,
@@ -366,26 +366,26 @@ def get_live_derivatives_metrics(symbol: str):
     funding_price_div = _funding_price_divergence(symbol, funding_rate)
     # --- Perp-spot basis pct ---
     try:
-        spot_price = _BYBIT_SPOT.fetch_ticker("CORE/USDT")["last"]
-        perp_price = _BYBIT_LINEAR.fetch_ticker("CORE/USDT:USDT")["last"]
+        spot_price = _BYBIT_SPOT.fetch_ticker("ETH/USDT")["last"]
+        perp_price = _BYBIT_LINEAR.fetch_ticker("ETH/USDT:USDT")["last"]
         if spot_price and perp_price:
             perp_spot_basis_pct = (perp_price / spot_price - 1) * 100
         else:
             perp_spot_basis_pct = None
     except Exception:
         perp_spot_basis_pct = None
-    # --- CORE-ETH funding spread ---
+    # --- BTC-ETH funding spread ---
     try:
-        core_funding = funding_rate
-        eth_funding = None
-        eth_funding_resp = _BYBIT_LINEAR.fetch_funding_rate("ETH/USDT:USDT")
-        eth_funding = eth_funding_resp.get("fundingRate")
-        if core_funding is not None and eth_funding is not None:
-            core_eth_funding_spread = core_funding - eth_funding
+        eth_funding = funding_rate
+        btc_funding = None
+        btc_funding_resp = _BYBIT_LINEAR.fetch_funding_rate("BTC/USDT:USDT")
+        btc_funding = btc_funding_resp.get("fundingRate")
+        if eth_funding is not None and btc_funding is not None:
+            eth_btc_funding_spread = eth_funding - btc_funding
         else:
-            core_eth_funding_spread = None
+            eth_btc_funding_spread = None
     except Exception:
-        core_eth_funding_spread = None
+        eth_btc_funding_spread = None
     # Liquidation stats (not available live here)
     liquidation_8h_long = None
     liquidation_8h_short = None
@@ -398,7 +398,7 @@ def get_live_derivatives_metrics(symbol: str):
         "sell_ratio"       : sell_ratio,
         "funding_price_div": funding_price_div,
         "perp_spot_basis_pct": perp_spot_basis_pct,
-        "core_eth_funding_spread": core_eth_funding_spread,
+        "eth_btc_funding_spread": eth_btc_funding_spread,
         "liquidation_8h_long": liquidation_8h_long,
         "liquidation_8h_short": liquidation_8h_short,
     }

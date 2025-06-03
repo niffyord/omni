@@ -1,14 +1,14 @@
 """
-Light-weight ETH Momentum ETL Pipeline (v0.1)
+Light-weight BTC Momentum ETL Pipeline (v0.1)
 ============================================
-Calculates a minimal momentum context for ETH/USDT so that the CORE trader can
+Calculates a minimal momentum context for BTC/USDT so that the ETH trader can
 avoid trading against broad-market direction.
 
 • Indicators: EMA-8/21, RSI-14, MACD histogram  (computed across 6 key timeframes)
 • Additional cross-asset metrics added:
-    – core_eth_ratio  (CORE price / ETH price)
-    – eth_core_corr   (Pearson corr of last N returns, N=30)
-    – eth_volume_dom (ETH volume dominance vs CORE)
+    – eth_btc_ratio  (ETH price / BTC price)
+    – btc_eth_corr   (Pearson corr of last N returns, N=30)
+    – btc_volume_dom (BTC volume dominance vs ETH)
     – atr, bb_width, hv_ann, rsi_vol, macd_norm
 • Timeframes processed by default: 1m, 5m, 15m, 1h, 4h, 1d
 • Derived flag: eth_momentum = bullish / bearish / neutral
@@ -19,16 +19,16 @@ Environment variables (via .env):
     TIMESCALEDB_URL        Postgres/TimescaleDB connection string
     BYBIT_API_KEY          Optional (not needed for public OHLCV)
     BYBIT_API_SECRET       Optional
-    ETH_SYMBOL             Override default symbol (default: "ETH/USDT:USDT")
-    CORE_SYMBOL            (optional) override CORE symbol (default: "CORE/USDT:USDT")
-    ETH_TF_LIST            Comma-separated TF list (default: "1m,5m,15m,1h,4h,1d")
-    ETH_LIMIT              Bars to fetch (default: 400)
-    ETH_LOOP_INTERVAL      Seconds between cycles (default: 60)
+    BTC_SYMBOL             Override default symbol (default: "BTC/USDT:USDT")
+    ETH_SYMBOL             (optional) override ETH symbol (default: "ETH/USDT:USDT")
+    BTC_TF_LIST            Comma-separated TF list (default: "1m,5m,15m,1h,4h,1d")
+    BTC_LIMIT              Bars to fetch (default: 400)
+    BTC_LOOP_INTERVAL      Seconds between cycles (default: 60)
 
 Run via:
     python etl_btc_context.py   (uses an async loop)
 
-You can supervise this script with systemd/pm2/etc. alongside the existing CORE
+You can supervise this script with systemd/pm2/etc. alongside the existing ETH
 `etl_indicators.py`.
 """
 
@@ -45,13 +45,13 @@ from dotenv import load_dotenv
 
 # ─── ENV / CONFIG ────────────────────────────────────────────────────────
 load_dotenv()
-SYMBOL        = os.getenv("ETH_SYMBOL", "ETH/USDT:USDT")
-CORE_SYMBOL   = os.getenv("CORE_SYMBOL", "CORE/USDT:USDT")
-TF_LIST       = [tf.strip() for tf in os.getenv("ETH_TF_LIST", "1m,5m,15m,1h,4h,1d").split(",") if tf.strip()]
-LIMIT         = int(os.getenv("ETH_LIMIT", 400))  # more bars for vol calcs
+SYMBOL        = os.getenv("BTC_SYMBOL", "BTC/USDT:USDT")
+ETH_SYMBOL   = os.getenv("ETH_SYMBOL", "ETH/USDT:USDT")
+TF_LIST       = [tf.strip() for tf in os.getenv("BTC_TF_LIST", "1m,5m,15m,1h,4h,1d").split(",") if tf.strip()]
+LIMIT         = int(os.getenv("BTC_LIMIT", 400))  # more bars for vol calcs
 DB_URL        = os.getenv("TIMESCALEDB_URL")
-TABLE         = os.getenv("ETH_TABLE", "market_indicators")  # share table
-LOOP_INTERVAL = int(os.getenv("ETH_LOOP_INTERVAL", 60))
+TABLE         = os.getenv("BTC_TABLE", "market_indicators")  # share table
+LOOP_INTERVAL = int(os.getenv("BTC_LOOP_INTERVAL", 60))
 
 TS_NOW = lambda: int(datetime.now(timezone.utc).timestamp() * 1000)
 
@@ -60,7 +60,7 @@ logging.basicConfig(
     format="[%(asctime)s] %(levelname)s: %(message)s",
     handlers=[logging.StreamHandler()],
 )
-logger = logging.getLogger("ETH_ETL")
+logger = logging.getLogger("BTC_ETL")
 
 # ─── CCXT EXCHANGE ───────────────────────────────────────────────────────
 EX = ccxt.bybit(
@@ -186,12 +186,12 @@ def _summarise(metrics: dict) -> str:
     add("atr", "atr", "{:.2f}")
     add("hv_ann", "hv", "{:.4f}")
     add("bb_width", "bb_width", "{:.4f}")
-    add("core_eth_ratio", "core_eth_ratio", "{:.6f}")
-    add("eth_core_corr", "corr", "{:.3f}")
-    add("eth_core_corr_dyn", "corr_dyn", "{:.3f}")
-    add("eth_volume_dom", "vol_dom", "{:.4f}")
+    add("eth_btc_ratio", "eth_btc_ratio", "{:.6f}")
+    add("btc_eth_corr", "corr", "{:.3f}")
+    add("btc_eth_corr_dyn", "corr_dyn", "{:.3f}")
+    add("btc_volume_dom", "vol_dom", "{:.4f}")
     add("last_close_eth", "last_eth", "{:.2f}")
-    add("last_close_core", "last_core", "{:.2f}")
+    add("last_close_btc", "last_btc", "{:.2f}")
 
     return "; ".join(kv) if kv else "n/a"
 
@@ -258,17 +258,17 @@ def contextualize_metrics(metrics):
     out.append(f"Volatility: ATR={f(atr)} (10d={f(atr10d)}), HV={f(hv,4)}, BB Width={f(bb_width,5)}, RSI Vol={f(rsi_vol)}")
     # --- Price ---
     price = metrics.get('last_close_eth', 'N/A')
-    price_core = metrics.get('last_close_core', 'N/A')
-    core_eth_ratio = metrics.get('core_eth_ratio', 'N/A')
-    out.append(f"Price: ETH={f(price)} | CORE={f(price_core)} | CORE/ETH Ratio={f(core_eth_ratio,6)}")
+    price_btc = metrics.get('last_close_btc', 'N/A')
+    eth_btc_ratio = metrics.get('eth_btc_ratio', 'N/A')
+    out.append(f"Price: ETH={f(price)} | BTC={f(price_btc)} | ETH/BTC Ratio={f(eth_btc_ratio,6)}")
     # --- Correlation ---
-    corr = metrics.get('eth_core_corr', 'N/A')
-    corr_dyn = metrics.get('eth_core_corr_dyn', 'N/A')
-    out.append(f"Correlation: ETH/CORE Corr={f(corr,3)}, Dynamic Corr={f(corr_dyn,3)}")
+    corr = metrics.get('btc_eth_corr', 'N/A')
+    corr_dyn = metrics.get('btc_eth_corr_dyn', 'N/A')
+    out.append(f"Correlation: BTC/ETH Corr={f(corr,3)}, Dynamic Corr={f(corr_dyn,3)}")
     # --- Volume ---
-    vol_dom = metrics.get('eth_volume_dom', 'N/A')
-    vol_dom_5ago = metrics.get('eth_volume_dom_5ago', 'N/A')
-    vol_dom_slope = metrics.get('eth_volume_dom_slope_5', 'N/A')
+    vol_dom = metrics.get('btc_volume_dom', 'N/A')
+    vol_dom_5ago = metrics.get('btc_volume_dom_5ago', 'N/A')
+    vol_dom_slope = metrics.get('btc_volume_dom_slope_5', 'N/A')
     out.append(f"Volume: Dominance={f(vol_dom,4)}, 5 bars ago={f(vol_dom_5ago,4)}, Slope={f(vol_dom_slope,+4)}")
     # --- Risk ---
     atr10d_ratio = metrics.get('atr10d_ratio', 'N/A')
@@ -276,19 +276,19 @@ def contextualize_metrics(metrics):
     atr10d_ratio_slope = metrics.get('atr10d_ratio_slope_5', 'N/A')
     out.append(f"Risk: ATR10d Ratio={f(atr10d_ratio,6)} (Median30={f(atr10d_ratio_med30,6)}), Slope={f(atr10d_ratio_slope,+6)}")
     # --- Trend/History ---
-def compute_metrics(eth_ohlcv: List[List[float]], core_ohlcv: List[List[float]], tf: str) -> dict:
+def compute_metrics(btc_ohlcv: List[List[float]], eth_ohlcv: List[List[float]], tf: str) -> dict:
     """Return momentum + cross-asset & vol metrics for a single timeframe, with short-term history deltas."""
-    if (not eth_ohlcv or len(eth_ohlcv) < 30) or (not core_ohlcv or len(core_ohlcv) < 30):
+    if (not btc_ohlcv or len(btc_ohlcv) < 30) or (not eth_ohlcv or len(eth_ohlcv) < 30):
         return {"error": "insufficient_data", "timestamp": TS_NOW()}
 
+    close_btc = [x[4] for x in btc_ohlcv]
     close_eth = [x[4] for x in eth_ohlcv]
-    close_core = [x[4] for x in core_ohlcv]
-    volume_eth = [x[5] for x in eth_ohlcv]
-    high_eth = [x[2] for x in eth_ohlcv]
-    low_eth = [x[3] for x in eth_ohlcv]
+    volume_btc = [x[5] for x in btc_ohlcv]
+    high_btc = [x[2] for x in btc_ohlcv]
+    low_btc = [x[3] for x in btc_ohlcv]
 
     # --- ATR (14) ---
-    atr_series = talib.ATR(np.array(high_eth), np.array(low_eth), np.array(close_eth), 14)
+    atr_series = talib.ATR(np.array(high_btc), np.array(low_btc), np.array(close_btc), 14)
     def last_value(arr):
         try:
             if arr is None:
@@ -361,7 +361,7 @@ def compute_metrics(eth_ohlcv: List[List[float]], core_ohlcv: List[List[float]],
         momentum = "neutral"
 
     # Cross-asset metrics
-    core_eth_ratio = float(close_core[-1]) / float(close_eth[-1]) if float(close_eth[-1]) != 0 else None
+    eth_btc_ratio = float(close_eth[-1]) / float(close_btc[-1]) if float(close_btc[-1]) != 0 else None
 
     # Realized vol (annualized)
     minutes = tf_to_minutes(tf)
@@ -371,33 +371,34 @@ def compute_metrics(eth_ohlcv: List[List[float]], core_ohlcv: List[List[float]],
     hv_ann = float(np.std(np.diff(close_eth)) * ann_factor) if len(close_eth) > 5 else None
 
     # ATR (14)
-    atr_series = talib.ATR(np.array(high_eth), np.array(low_eth), np.array(close_eth), 14)
+    atr_series = talib.ATR(np.array(high_btc), np.array(low_btc), np.array(close_btc), 14)
     last_atr = last_value(atr_series)
 
     # Volume dominance
-    eth_volume_dom = None
-    if len(volume_eth) > 0 and len(close_eth) > 0:
-        eth_vol_sum = sum(volume_eth)
-        core_vol_sum = sum([x[5] for x in core_ohlcv])
-        if eth_vol_sum + core_vol_sum > 0:
-            eth_volume_dom = float(eth_vol_sum / (eth_vol_sum + core_vol_sum))
+    btc_volume_dom = None
+    if len(volume_btc) > 0 and len(close_btc) > 0:
+        btc_vol_sum = sum(volume_btc)
+        eth_vol_sum = sum([x[5] for x in eth_ohlcv])
+        if btc_vol_sum + eth_vol_sum > 0:
+            btc_volume_dom = float(btc_vol_sum / (btc_vol_sum + eth_vol_sum))
 
     # --- correlation guard ------------------------------------------
     try:
-        base_corr = np.corrcoef(np.diff(close_eth[-N_CORR_DEFAULT:]), np.diff(close_core[-N_CORR_DEFAULT:]))[0, 1]
+        base_corr = np.corrcoef(np.diff(close_btc[-N_CORR_DEFAULT:]), np.diff(close_eth[-N_CORR_DEFAULT:]))[0, 1]
 
     except Exception:
         base_corr = None
 
     metrics = {
-        "timestamp": int(eth_ohlcv[-1][0]),
+        "timestamp": int(btc_ohlcv[-1][0]),
         "eth_momentum": momentum,
-        "core_eth_ratio": core_eth_ratio,
-        "eth_core_corr": base_corr,
-        "eth_volume_dom": eth_volume_dom,
+        "eth_btc_ratio": eth_btc_ratio,
+        "btc_eth_corr": base_corr,
+        "btc_volume_dom": btc_volume_dom,
         "hv_ann": hv_ann,
         "atr": last_atr,
         "last_close_eth": float(close_eth[-1]),
+        "last_close_btc": float(close_btc[-1]),
         "atr_ratio": atr_ratio,
         "max_atr_ratio_comp": max_atr_ratio_comp,
     }
@@ -425,15 +426,15 @@ async def cycle_once():
     async def fetch_ohlcv(symbol, tf):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: EX.fetch_ohlcv(symbol, tf, limit=LIMIT, params={"recvWindow": 60_000}))
-    core_tasks = {tf: asyncio.create_task(fetch_ohlcv(CORE_SYMBOL, tf)) for tf in tf_ready}
-    eth_tasks = {tf: asyncio.create_task(fetch_ohlcv(SYMBOL, tf)) for tf in tf_ready}
+    eth_tasks = {tf: asyncio.create_task(fetch_ohlcv(ETH_SYMBOL, tf)) for tf in tf_ready}
+    btc_tasks = {tf: asyncio.create_task(fetch_ohlcv(SYMBOL, tf)) for tf in tf_ready}
     rows = []
     vol_state_rows = []
     for tf in tf_ready:
         try:
             eth_ohlcv = await eth_tasks[tf]
-            core_ohlcv = await core_tasks[tf]
-            ind = compute_metrics(eth_ohlcv, core_ohlcv, tf)
+            btc_ohlcv = await btc_tasks[tf]
+            ind = compute_metrics(btc_ohlcv, eth_ohlcv, tf)
             rows.append((SYMBOL, tf, ind["timestamp"], json.dumps(ind)))
             # --- persist max_atr_ratio_comp ---
             if ind.get("max_atr_ratio_comp") is not None:
