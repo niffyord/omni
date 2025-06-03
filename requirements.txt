@@ -1,0 +1,25 @@
+ccxt
+ccxtpro
+redis
+psycopg2-binary
+pandas
+numpy
+TA-Lib
+python-dotenv
+schedule
+colorama
+typing-extensions
+pytz
+requests
+hmac
+hashlib
+logging
+asyncio
+talib
+statistics
+websockets
+# For type hints and compatibility
+typing
+# For agents framework and internal modules (if not in repo, install manually)
+# agents
+# timescaledb_tools
