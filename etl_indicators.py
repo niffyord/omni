@@ -17,7 +17,7 @@ def tf_to_ms(tf: str) -> int:
 
 # ─── ENV / CONFIG ────────────────────────────────────────────────────────
 load_dotenv()
-SYMBOL         = os.getenv("SYMBOL", "CORE/USDT:USDT")
+SYMBOL         = os.getenv("SYMBOL", "ETH/USDT:USDT")
 TF_LIST        = ["1m", "5m", "15m", "1h", "4h", "1d"]
 LIMIT          = 200
 HISTORY_LENGTH = int(os.getenv("HISTORY_LENGTH", 200))  # Increased from 7 to 30 for richer historical context
@@ -189,7 +189,7 @@ def fetch_ohlcv(tf: str) -> List[List[float]]:
 
 
 # ─── MINIMAL INDICATOR SCHEMA & FEATURE FLAGS ───
-CORE_FIELDS = {
+ETH_FIELDS = {
     # --- time / price ---
     "timestamp", "last_close", "open", "high", "low", "volume",
     "minute", "hour", "dow", "new_d",
@@ -207,22 +207,22 @@ CORE_FIELDS = {
     # --- new QA/TA agent fields ---
     "dollar_vol", "sigma30_pctile", "ema_fast_slope", "ema_slow_slope", "return_1h", "return_4h", "atr10d_ratio",
     # --- high-impact TA features ---
-    "eth_core_corr_30", "atr10_sigma30_ratio", "close_vs_vwap_pct", "day_range_pct", "vol_percentile_20", "trailing_max_dd_20",
+    "btc_eth_corr_30", "atr10_sigma30_ratio", "close_vs_vwap_pct", "day_range_pct", "vol_percentile_20", "trailing_max_dd_20",
     # --- leverage/seasonality features ---
     "roll_hl_pct", "streak_dir_5", "rvi_14", "obv_slope_20",
     "macd", "macd_signal", "macd_hist", "stoch_k", "stoch_d", "cci20", "mfi14"
 }
-ENABLE = {k: True for k in CORE_FIELDS}
+ENABLE = {k: True for k in ETH_FIELDS}
 ENABLE.update({
     "atr10": True, "atr_ratio": True, "bb_width": True, "dollar_vol": True, "sigma30_pctile": True, "ema_fast_slope": True, "ema_slow_slope": True,
     "return_1h": True, "return_4h": True, "atr10d_ratio": True,
-    "eth_core_corr_30": True, "atr10_sigma30_ratio": True, "close_vs_vwap_pct": True, "day_range_pct": True, "vol_percentile_20": True, "trailing_max_dd_20": True,
+    "btc_eth_corr_30": True, "atr10_sigma30_ratio": True, "close_vs_vwap_pct": True, "day_range_pct": True, "vol_percentile_20": True, "trailing_max_dd_20": True,
     "roll_hl_pct": True, "streak_dir_5": True, "rvi_14": True, "obv_slope_20": True,
     "macd": True, "macd_signal": True, "macd_hist": True,
     "stoch_k": True, "stoch_d": True, "cci20": True, "mfi14": True
 })
 
-def compute(ohlcv: list[list[float]], tf: str, eth_close_series=None) -> dict:
+def compute(ohlcv: list[list[float]], tf: str, btc_close_series=None) -> dict:
     # Safety check for empty or insufficient data
     if not ohlcv or len(ohlcv) < 20:
         logging.warning(f"Insufficient OHLCV data for {tf}: {len(ohlcv) if ohlcv else 0} bars")
@@ -379,17 +379,17 @@ def compute(ohlcv: list[list[float]], tf: str, eth_close_series=None) -> dict:
     })
 
     # --- High-impact TA features ---
-    # eth_core_corr_30: 30-bar rolling Pearson correlation to ETH/USDT
-    if ENABLE.get("eth_core_corr_30") and len(close) >= 30 and eth_close_series is not None and len(eth_close_series) >= 30:
+    # btc_eth_corr_30: 30-bar rolling Pearson correlation to ETH/USDT
+    if ENABLE.get("btc_eth_corr_30") and len(close) >= 30 and btc_close_series is not None and len(btc_close_series) >= 30:
         try:
-            minlen = min(len(close), len(eth_close_series))
-            core_close = close.iloc[-minlen:]
-            eth_close = eth_close_series.iloc[-minlen:]
-            out["eth_core_corr_30"] = float(pd.Series(core_close).rolling(30).corr(eth_close).iat[-1])
+            minlen = min(len(close), len(btc_close_series))
+            eth_close = close.iloc[-minlen:]
+            btc_close = btc_close_series.iloc[-minlen:]
+            out["btc_eth_corr_30"] = float(pd.Series(eth_close).rolling(30).corr(btc_close).iat[-1])
         except Exception:
-            out["eth_core_corr_30"] = None
+            out["btc_eth_corr_30"] = None
     else:
-        out["eth_core_corr_30"] = None
+        out["btc_eth_corr_30"] = None
 
     # ATR10/sigma30 ratio
     out["atr10_sigma30_ratio"] = ((out["atr10"] / out["last_close"]) / out["sigma30"]) if out.get("sigma30") not in (None, 0) else None
@@ -488,27 +488,27 @@ async def cycle():
     """Main processing cycle with error handling"""
     rows = []
     vol_state_rows = []
-    eth_cache = {}
+    btc_cache = {}
     for tf in TF_LIST:
         try:
             ohlcv = fetch_ohlcv(tf)
             if not ohlcv or len(ohlcv) < 20:
                 logging.warning(f"Skipping {tf}: insufficient data ({len(ohlcv) if ohlcv else 0} bars)")
                 continue
-            # ETH close cache for this tf
-            if tf not in eth_cache:
+            # BTC close cache for this tf
+            if tf not in btc_cache:
                 try:
-                    eth_ohlcv = EX.fetch_ohlcv("ETH/USDT:USDT", tf, limit=len(ohlcv))
-                    eth_cache[tf] = pd.Series([b[4] for b in eth_ohlcv], dtype=float)
+                    btc_ohlcv = EX.fetch_ohlcv("BTC/USDT:USDT", tf, limit=len(ohlcv))
+                    btc_cache[tf] = pd.Series([b[4] for b in btc_ohlcv], dtype=float)
                 except Exception:
-                    eth_cache[tf] = None
-            indicators = compute(ohlcv, tf, eth_close_series=eth_cache[tf])
+                    btc_cache[tf] = None
+            indicators = compute(ohlcv, tf, btc_close_series=btc_cache[tf])
             # Skip if compute returned an error
             if "error" in indicators:
                 logging.warning(f"Skipping {tf}: {indicators.get('error')}")
                 continue
             # ------- guarantee JSON-safe & complete ----------
-            for fld in CORE_FIELDS:            # ensure every key exists
+            for fld in ETH_FIELDS:            # ensure every key exists
                 indicators.setdefault(fld, None)
             for k, v in indicators.items():     # replace NaN / inf
                 if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):

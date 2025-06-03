@@ -5,10 +5,10 @@ Omni is a collection of Python scripts used to collect market data and run an au
 ## Components
 
 - **ai_trade_agent.py** – main trading loop that runs every 60 seconds and executes orders through Bybit. It implements the `OmniTrader` agent pipeline.
-- **orderbook_collector.py** – collects order book and trade data for `CORE/USDT` and streams features to Redis.
+- **orderbook_collector.py** – collects order book and trade data for `ETH/USDT` and streams features to Redis.
 - **derivatives_metrics_scheduler.py** – scheduler that stores funding, open interest and other derivative metrics in TimescaleDB.
 - **etl_indicators.py** – ETL worker that computes multi‑timeframe technical indicators and saves them to the database.
-- **etl_btc_context.py** – calculates ETH momentum and cross‑asset metrics.
+- **etl_btc_context.py** – calculates BTC momentum and cross‑asset metrics.
 - **etl_history.py** – utility for backfilling historical volatility and Bollinger band width metrics.
 - **fetch_history.py** – helper to read stored indicator history from TimescaleDB.
 - **timescaledb_tools.py** – functions to fetch the latest indicators or historical series for use by the trading agent.
@@ -35,7 +35,7 @@ INTERVAL          = 60          # seconds between cycles
 ```
 The derivatives scheduler collects metrics such as funding rate, open interest and long/short ratio:
 ```text
-Derivatives-Metrics Collector  • CORE/USDT
+Derivatives-Metrics Collector  • ETH/USDT
 — stores 1-min snapshots in TimescaleDB
 ```
 Database access uses the `TIMESCALEDB_URL` environment variable:

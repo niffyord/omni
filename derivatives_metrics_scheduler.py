@@ -1,5 +1,5 @@
 """
-Derivatives-Metrics Collector  • CORE/USDT
+Derivatives-Metrics Collector  • ETH/USDT
 — stores 1-min snapshots in TimescaleDB
 
 NEW COLUMNS
@@ -19,7 +19,7 @@ NEW COLUMNS
 • liquidation_8h_long  DOUBLE PRECISION,
 • liquidation_8h_short DOUBLE PRECISION,
 • perp_spot_basis_pct  DOUBLE PRECISION,
-• core_eth_funding_spread DOUBLE PRECISION,
+• eth_btc_funding_spread DOUBLE PRECISION,
 """
 
 import os
@@ -48,7 +48,7 @@ import json
 LIQUIDATION_EVENTS = deque()
 
 # --- Start Bybit WebSocket listener for liquidations ---
-def start_liquidation_listener(symbol="COREUSDT"): 
+def start_liquidation_listener(symbol="ETHUSDT"): 
     async def listen():
         url = "wss://stream.bybit.com/v5/public/linear"
         topic = f"liquidation.{symbol}"
@@ -89,7 +89,7 @@ def get_8h_liquidation_totals():
 EX_PRICE = ccxt.bybit({"enableRateLimit": True, "options": {"defaultType": "linear"}})
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────
-SYMBOL     = "CORE/USDT:USDT"
+SYMBOL     = "ETH/USDT:USDT"
 TABLE_NAME = "derivatives_metrics"
 RETENTION_DAYS = int(os.getenv("DERIV_RETENTION_DAYS", 7))
 
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     liquidation_8h_long  DOUBLE PRECISION,
     liquidation_8h_short DOUBLE PRECISION,
     perp_spot_basis_pct  DOUBLE PRECISION,
-    core_eth_funding_spread DOUBLE PRECISION,
+    eth_btc_funding_spread DOUBLE PRECISION,
     funding_z            DOUBLE PRECISION,
     PRIMARY KEY (symbol, timestamp)
 );
@@ -182,7 +182,7 @@ def get_quarterly_symbol():
     if 'sym' in QUARTERLY_CACHE and time.time() - QUARTERLY_CACHE['ts'] < 86_400:
         return QUARTERLY_CACHE['sym']
     markets = EX_PRICE.load_markets()
-    cands = [m for m in markets.values() if m.get("base")=="CORE" and m.get("linear") and m.get("future")]
+    cands = [m for m in markets.values() if m.get("base")=="ETH" and m.get("linear") and m.get("future")]
     if not cands:
         return None
     cands.sort(key=lambda x: x.get("expiry", float('inf')))
@@ -321,9 +321,9 @@ def job():
 
         # --- Perp-spot basis pct ---
         try:
-            spot_ticker = EX_PRICE.fetch_ticker("CORE/USDT")
+            spot_ticker = EX_PRICE.fetch_ticker("ETH/USDT")
             spot_price = spot_ticker.get("last")
-            perp_price = EX_PRICE.fetch_ticker("CORE/USDT:USDT").get("last")
+            perp_price = EX_PRICE.fetch_ticker("ETH/USDT:USDT").get("last")
             if spot_price and perp_price:
                 metrics["perp_spot_basis_pct"] = (perp_price / spot_price - 1) * 100
             else:
@@ -336,7 +336,7 @@ def job():
             qsym = get_quarterly_symbol()
             if qsym:
                 q_price = EX_PRICE.fetch_ticker(qsym).get("last")
-                perp_price = EX_PRICE.fetch_ticker("CORE/USDT:USDT").get("last")
+                perp_price = EX_PRICE.fetch_ticker("ETH/USDT:USDT").get("last")
                 if q_price and perp_price:
                     metrics["perp_quarterly_basis_pct"] = (perp_price / q_price - 1) * 100
                 else:
@@ -356,24 +356,24 @@ def job():
         except Exception:
             metrics["basis_annualised"] = None
 
-        # --- CORE-ETH funding spread ---
+        # --- BTC-ETH funding spread ---
         try:
-            core_funding = metrics["funding_rate"]
-            eth_funding = None
-            # Try get ETH/USDT:USDT funding rate from Bybit, cache for 5 min
+            eth_funding = metrics["funding_rate"]
+            btc_funding = None
+            # Try get BTC/USDT:USDT funding rate from Bybit, cache for 5 min
             now = time.time()
-            if not hasattr(job, "ETH_FUNDING_CACHE"):
-                job.ETH_FUNDING_CACHE = {"ts": 0, "val": None}
-            if now - job.ETH_FUNDING_CACHE["ts"] > 300:
-                eth_funding_resp = EX_PRICE.fetch_funding_rate("ETH/USDT:USDT")
-                job.ETH_FUNDING_CACHE = {"ts": now, "val": eth_funding_resp.get("fundingRate")}
-            eth_funding = job.ETH_FUNDING_CACHE["val"]
-            if core_funding is not None and eth_funding is not None:
-                metrics["core_eth_funding_spread"] = core_funding - eth_funding
+            if not hasattr(job, "BTC_FUNDING_CACHE"):
+                job.BTC_FUNDING_CACHE = {"ts": 0, "val": None}
+            if now - job.BTC_FUNDING_CACHE["ts"] > 300:
+                btc_funding_resp = EX_PRICE.fetch_funding_rate("BTC/USDT:USDT")
+                job.BTC_FUNDING_CACHE = {"ts": now, "val": btc_funding_resp.get("fundingRate")}
+            btc_funding = job.BTC_FUNDING_CACHE["val"]
+            if eth_funding is not None and btc_funding is not None:
+                metrics["eth_btc_funding_spread"] = eth_funding - btc_funding
             else:
-                metrics["core_eth_funding_spread"] = None
+                metrics["eth_btc_funding_spread"] = None
         except Exception:
-            metrics["core_eth_funding_spread"] = None
+            metrics["eth_btc_funding_spread"] = None
 
         # --- Funding 8h avg (Bybit REST, not DB) ---
         try:
@@ -390,7 +390,7 @@ def job():
 
         # --- OI Turnover ratio ---
         try:
-            spot_ohlcv = EX_PRICE.fetch_ohlcv("CORE/USDT", timeframe="1d", limit=2)
+            spot_ohlcv = EX_PRICE.fetch_ohlcv("ETH/USDT", timeframe="1d", limit=2)
             if spot_ohlcv and len(spot_ohlcv) >= 2:
                 spot_vol = spot_ohlcv[-1][5]
                 metrics["oi_turnover_ratio"] = metrics["open_interest"] / spot_vol if spot_vol else None
@@ -402,7 +402,7 @@ def job():
         # --- Insert with new columns ---
         cur.execute(
             f"""INSERT INTO {TABLE_NAME}
-                (symbol, timestamp, funding_rate, open_interest, oi_1h_delta_pct, long_short_ratio, buy_ratio, sell_ratio, funding_price_div, liquidation_8h_long, liquidation_8h_short, perp_spot_basis_pct, core_eth_funding_spread, funding_z, oi_5m_delta_pct, oi_15m_delta_pct, oi_4h_delta_pct, ls_5m_delta_pct, ls_15m_delta_pct, ls_4h_delta_pct, oi_z_24h, funding_8h_avg, perp_quarterly_basis_pct, basis_annualised, liq_imbalance_8h, oi_turnover_ratio)
+                (symbol, timestamp, funding_rate, open_interest, oi_1h_delta_pct, long_short_ratio, buy_ratio, sell_ratio, funding_price_div, liquidation_8h_long, liquidation_8h_short, perp_spot_basis_pct, eth_btc_funding_spread, funding_z, oi_5m_delta_pct, oi_15m_delta_pct, oi_4h_delta_pct, ls_5m_delta_pct, ls_15m_delta_pct, ls_4h_delta_pct, oi_z_24h, funding_8h_avg, perp_quarterly_basis_pct, basis_annualised, liq_imbalance_8h, oi_turnover_ratio)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT(symbol,timestamp) DO UPDATE SET
                     funding_rate=EXCLUDED.funding_rate,
@@ -415,7 +415,7 @@ def job():
                     liquidation_8h_long=EXCLUDED.liquidation_8h_long,
                     liquidation_8h_short=EXCLUDED.liquidation_8h_short,
                     perp_spot_basis_pct=EXCLUDED.perp_spot_basis_pct,
-                    core_eth_funding_spread=EXCLUDED.core_eth_funding_spread,
+                    eth_btc_funding_spread=EXCLUDED.eth_btc_funding_spread,
                     funding_z=EXCLUDED.funding_z,
                     oi_5m_delta_pct=EXCLUDED.oi_5m_delta_pct,
                     oi_15m_delta_pct=EXCLUDED.oi_15m_delta_pct,
@@ -441,7 +441,7 @@ def job():
              metrics["liquidation_8h_long"],
              metrics["liquidation_8h_short"],
              metrics["perp_spot_basis_pct"],
-             metrics["core_eth_funding_spread"],
+             metrics["eth_btc_funding_spread"],
              metrics["funding_z"],
              metrics["oi_5m_delta_pct"],
              metrics["oi_15m_delta_pct"],
@@ -475,7 +475,7 @@ def job():
         f"Buy={safe_fmt(metrics['buy_ratio'], '{:.2%}')}  Sell={safe_fmt(metrics['sell_ratio'], '{:.2%}')}  "
         f"Div={metrics['funding_price_div']}  "
         f"Perp-Spot={safe_fmt(metrics['perp_spot_basis_pct'], '{:.4f}%')}  "
-        f"CORE-ETH funding spread={safe_fmt(metrics['core_eth_funding_spread'], '{:.8%}')}  "
+        f"BTC-ETH funding spread={safe_fmt(metrics['eth_btc_funding_spread'], '{:.8%}')}  "
         f"| OI Δ5m={safe_fmt(metrics['oi_5m_delta_pct'], '{:.2f}%')}  "
         f"OI Δ15m={safe_fmt(metrics['oi_15m_delta_pct'], '{:.2f}%')}  "
         f"OI Δ4h={safe_fmt(metrics['oi_4h_delta_pct'], '{:.2f}%')}  "
@@ -502,7 +502,7 @@ def main():
 
 if __name__ == "__main__":
     # Start liquidation listener before main loop
-    start_liquidation_listener("COREUSDT")
+    start_liquidation_listener("ETHUSDT")
     main()
 
 
@@ -529,7 +529,7 @@ def summarize_derivatives_metrics(metrics: dict) -> str:
     sell = metrics.get("sell_ratio")
     div = metrics.get("funding_price_div")
     basis = metrics.get("perp_spot_basis_pct")
-    spread = metrics.get("core_eth_funding_spread")
+    spread = metrics.get("eth_btc_funding_spread")
     liq_long = metrics.get("liquidation_8h_long")
     liq_short = metrics.get("liquidation_8h_short")
     ts = metrics.get("timestamp", "N/A")
@@ -542,7 +542,7 @@ def summarize_derivatives_metrics(metrics: dict) -> str:
         f"Buy: {fmt(buy, pct=True, n=2)} | Sell: {fmt(sell, pct=True, n=2)} | "
         f"Divergence: {div} | "
         f"Perp-Spot basis: {fmt(basis, pct=False, n=4)}% | "
-        f"CORE-ETH funding spread: {fmt(spread, pct=True, n=6)} | "
+        f"BTC-ETH funding spread: {fmt(spread, pct=True, n=6)} | "
         f"8h Liq (Long): {fmt(liq_long, pct=False, n=2)} | 8h Liq (Short): {fmt(liq_short, pct=False, n=2)} | "
         f"Timestamp: {ts}"
     )

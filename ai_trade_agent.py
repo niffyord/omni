@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# OmniTrader – single-symbol loop (CORE/USDT:USDT)  •  v0.6  •  2025-04-24
+# OmniTrader – single-symbol loop (ETH/USDT:USDT)  •  v0.6  •  2025-04-24
 #  Implements all prompt, coordination, and runtime tweaks discussed.
 # ──────────────────────────────────────────────────────────────────────────────
 # Requires colorama for colored terminal logs
@@ -152,7 +152,7 @@ def execute_limit_order_on_bybit(
     – Optionally sets PostOnly only when price is on the passive side.
     """
     import os, time, ccxt, math
-    symbol = "CORE/USDT:USDT"
+    symbol = "ETH/USDT:USDT"
     qty     = float(os.getenv("ORDER_SIZE", 1))
 
     # Default for post_only if not provided
@@ -230,7 +230,7 @@ def execute_market_order_on_bybit(side: str, stop_loss: float, take_profit: floa
     import os, time
     api_key = os.getenv("BYBIT_API_KEY")
     api_secret = os.getenv("BYBIT_API_SECRET")
-    symbol = "CORE/USDT:USDT"
+    symbol = "ETH/USDT:USDT"
     order_size = float(os.getenv("ORDER_SIZE", 1))
     cfg = {
         "apiKey": api_key,
@@ -276,7 +276,7 @@ def get_current_price(symbol: str) -> float:
     """
     import ccxt
     import os
-    symbol = symbol or os.getenv("SYMBOL", "CORE/USDT:USDT")
+    symbol = symbol or os.getenv("SYMBOL", "ETH/USDT:USDT")
     exchange = ccxt.bybit({
         "enableRateLimit": True,
         "options": {"defaultType": "linear"},
@@ -294,17 +294,17 @@ def get_current_price(symbol: str) -> float:
 def get_market_context(symbol: str, timeframes: list[str]) -> dict:
     """
     Fetches all required market context in a single round‑trip:
-      • multi‑TF indicators (for all timeframes given) for the target symbol (e.g. CORE/USDT:USDT)
-      • ETH context: per-timeframe *summary* objects from the ETH ETL pipeline (key=value string of all ETH metrics; raw numbers stripped – see etl_eth_context.py)
+      • multi‑TF indicators (for all timeframes given) for the target symbol (e.g. ETH/USDT:USDT)
+      • BTC context: per-timeframe *summary* objects from the BTC ETL pipeline (key=value string of all BTC metrics; raw numbers stripped – see etl_btc_context.py)
       • full order‑book snapshot
       • derivatives / funding metrics
       • indicator_window: last 30 bars for each timeframe via ``get_last_n_indicators``
     Always returns a dict; embeds error messages if any sub‑call fails.
-    ETH context is provided under the 'eth_context' key as:
-      {'eth_context': { timeframe: { 'timestamp': int, 'summary': str } }}
+    BTC context is provided under the 'btc_context' key as:
+      {'btc_context': { timeframe: { 'timestamp': int, 'summary': str } }}
     """
     if not symbol:
-        symbol = "CORE/USDT:USDT"
+        symbol = "ETH/USDT:USDT"
     if not timeframes:
         timeframes = ["1m", "5m", "15m", "1h", "4h", "1d"]
 
@@ -314,7 +314,7 @@ def get_market_context(symbol: str, timeframes: list[str]) -> dict:
     except Exception as e:
         ctx["indicators_error"] = str(e)
 
-    # --- Historical volatility & BB width series for CORE/ETH, all TFs ---
+    # --- Historical volatility & BB width series for BTC/ETH, all TFs ---
     try:
         import timescaledb_tools
         ctx.update(timescaledb_tools.get_all_history_series_py())
@@ -326,20 +326,20 @@ def get_market_context(symbol: str, timeframes: list[str]) -> dict:
         ctx["history_series_error"] = str(e)
 
 
-    # --- ETH context: multi-TF, cross-asset, volatility, etc ---
+    # --- BTC context: multi-TF, cross-asset, volatility, etc ---
     try:
-        eth_tf = timeframes
-        eth_symbol = "ETH/USDT:USDT"
-        eth_context = _get_latest_indicators_multi(eth_symbol, eth_tf)
-        eth_context_summary = {}
-        for tf, data in eth_context.items():
-            eth_context_summary[tf] = {
+        btc_tf = timeframes
+        btc_symbol = "BTC/USDT:USDT"
+        btc_context = _get_latest_indicators_multi(btc_symbol, btc_tf)
+        btc_context_summary = {}
+        for tf, data in btc_context.items():
+            btc_context_summary[tf] = {
                 "timestamp": data["timestamp"],
                 "summary": "&".join(f"{k}={v}" for k, v in data.items() if k != "timestamp")
             }
-        ctx["eth_context"] = eth_context_summary
+        ctx["btc_context"] = btc_context_summary
     except Exception as e:
-        ctx["eth_context_error"] = str(e)
+        ctx["btc_context_error"] = str(e)
 
     try:
         ctx["orderbook"] = get_orderbook_snapshot(symbol)
@@ -361,7 +361,7 @@ execution_agent = Agent(
 
      instructions=r"""
 ###############################################################################
-#  ExecutionAgent v2 · CORE/USDT (Bybit)
+#  ExecutionAgent v2 · ETH/USDT (Bybit)
 #  ROLE: You are ExecutionAgent, responsible for executing validated trade signals
 #  with precise adherence to risk and execution constraints.
 #  CRITICAL GLOBAL RULE: Strictly adhere to input validations and execution logic.
@@ -385,7 +385,7 @@ for key in required_keys:
 ### 1 · CONFIDENCE & SIGNAL TYPE FILTER (CRITICAL FILTERING)
 if data["confidence"] < 45:
     reason = data.get("rationale", "Low confidence, trade not executed.")
-    OUTPUT = {"action":"ignored","reason": reason, "confidence": data["confidence"], "ev": data["ev"], "symbol":"CORE/USDT:USDT"}
+    OUTPUT = {"action":"ignored","reason": reason, "confidence": data["confidence"], "ev": data["ev"], "symbol":"ETH/USDT:USDT"}
     STOP EXECUTION IMMEDIATELY
 
 elif data["signal"] == "HOLD":
@@ -393,7 +393,7 @@ elif data["signal"] == "HOLD":
     output = {
         "action": "hold",
         "order_type": None,
-        "symbol": "CORE/USDT:USDT",
+        "symbol": "ETH/USDT:USDT",
         "executed_price": None,
         "stop_loss": data.get("stop_loss"),
         "take_profit": data.get("take_profit"),
@@ -415,7 +415,7 @@ elif data["signal"] == "HOLD":
 ### STAGE_1_DONE: Signal & Confidence Filtered. PROCEED TO STAGE 2.
 
 ### 2 · CURRENT PRICE FETCH & ORDER TYPE DECISION
-current_price = get_current_price("CORE/USDT:USDT")
+current_price = get_current_price("ETH/USDT:USDT")
 
 if data["signal"] == "BUY":
     if data["entry_price"] is None:
@@ -452,7 +452,7 @@ else: # Limit order
     )
 
 if resp.get("status") == "error":
-    OUTPUT = {"action":data["signal"].lower(),"status":"error","error":resp.get("error", "Execution error"), "details": resp, "confidence":data["confidence"],"ev":data["ev"],"symbol":"CORE/USDT:USDT"}
+    OUTPUT = {"action":data["signal"].lower(),"status":"error","error":resp.get("error", "Execution error"), "details": resp, "confidence":data["confidence"],"ev":data["ev"],"symbol":"ETH/USDT:USDT"}
     STOP EXECUTION IMMEDIATELY
 
 ### STAGE_3_DONE: Order Executed Successfully. PROCEED TO STAGE 4.
@@ -461,7 +461,7 @@ if resp.get("status") == "error":
 OUTPUT = {
     "action": data["signal"].lower(),
     "order_type": order_type,
-    "symbol": "CORE/USDT:USDT",
+    "symbol": "ETH/USDT:USDT",
     "executed_price": resp.get("entry_order_response", {}).get("average", current_price) if order_type == "market" else data["entry_price"],
     "stop_loss": data["stop_loss"],
     "take_profit": data["take_profit"],
@@ -562,7 +562,7 @@ Mission — four mandatory steps
 Available Data via get_market_context
 • Multi-TF indicators (1 m … 1 d): RSI, ADX, MA slopes, VWAP dev, ATR, BB width, OBV, etc.
 • 30-bar indicator history for each timeframe (``indicator_window``)
-• Cross-asset context: ETH, CORE correlations & spreads.
+• Cross-asset context: BTC, ETH correlations & spreads.
 • Order-book: imbalance, depth curve, micro-price, liquidity lambda, spread.
 • Derivatives: funding, OI deltas/Z-scores, long/short skew, liquidations.
 • Volatility regimes & realised-vol history.
@@ -684,7 +684,7 @@ Ensure the 'rationale' key clearly states the problem, e.g., "TechnicalAnalyst f
 # ──────────────────────────────────────────────────────────────────────────────
 #  Position check helper (includes pending limit order check)
 # ──────────────────────────────────────────────────────────────────────────────
-def get_open_position_summary(symbol="CORE/USDT:USDT") -> tuple[bool, dict|None]:
+def get_open_position_summary(symbol="ETH/USDT:USDT") -> tuple[bool, dict|None]:
     """
     Checks for open positions and open orders. Returns (has_open, summary_dict or None).
     summary_dict contains details of the open position/order if found.
@@ -898,7 +898,7 @@ async def one_cycle():
         last_position_summary=last_position_summary
     )
     user_input = (
-        "REQUEST_SIGNAL:symbol=CORE/USDT:USDT tfs=[1m,5m,15m,1h,4h,1d] "
+        "REQUEST_SIGNAL:symbol=ETH/USDT:USDT tfs=[1m,5m,15m,1h,4h,1d] "
         "extras=orderbook,derivatives return=json"
     )
     input_items.append({"content": user_input, "role": "user"})
@@ -906,7 +906,7 @@ async def one_cycle():
     cycle_trace_id = f"trading_cycle_{int(time.time())}"
     trace_metadata = {
         'run_type': 'live',
-        'symbol': 'CORE/USDT:USDT',
+        'symbol': 'ETH/USDT:USDT',
         'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
     }
     with trace("OmniTrader_One_Cycle", group_id=cycle_trace_id):

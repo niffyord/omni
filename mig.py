@@ -17,7 +17,7 @@ ALTER TABLE derivatives_metrics
   ADD COLUMN IF NOT EXISTS basis_annualised DOUBLE PRECISION,
   ADD COLUMN IF NOT EXISTS liq_imbalance_8h DOUBLE PRECISION,
   ADD COLUMN IF NOT EXISTS oi_turnover_ratio DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS core_eth_funding_spread DOUBLE PRECISION;
+  ADD COLUMN IF NOT EXISTS eth_btc_funding_spread DOUBLE PRECISION;
 """)
 conn.commit()
 cur.close()

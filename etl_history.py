@@ -24,7 +24,7 @@ def get_last_n_indicators(symbol, tf, n, field, ex=None):
             vals.append(val)
     return vals[-n:]
 
-def backfill_vol_state_and_bbwidth(symbols=["CORE/USDT:USDT", "ETH/USDT:USDT"], tfs=["1h", "4h", "1d"],
+def backfill_vol_state_and_bbwidth(symbols=["ETH/USDT:USDT", "BTC/USDT:USDT"], tfs=["1h", "4h", "1d"],
                                    n_max_ratio=30, n_bb_width=20):
     load_dotenv()
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
@@ -35,11 +35,11 @@ def backfill_vol_state_and_bbwidth(symbols=["CORE/USDT:USDT", "ETH/USDT:USDT"], 
         "options": {"defaultType": "linear"},
         "timeout": 60_000,
     })
-    ctx = {"vol_state": {"CORE": {}, "ETH": {}}, "bb_series": {}}
+    ctx = {"vol_state": {"ETH": {}, "BTC": {}}, "bb_series": {}}
     all_vol_rows = []
     all_bb_rows = []
     for symbol in symbols:
-        sym_key = "CORE" if symbol.startswith("CORE") else "ETH"
+        sym_key = "ETH" if symbol.startswith("ETH") else "BTC"
         for tf in tfs:
             # max_ratio_last30
             max_ratios = get_last_n_indicators(symbol, tf, n_max_ratio, "max_atr_ratio_comp", ex)
@@ -53,8 +53,8 @@ def backfill_vol_state_and_bbwidth(symbols=["CORE/USDT:USDT", "ETH/USDT:USDT"], 
                 val = indicators.get("max_atr_ratio_comp")
                 if val is not None:
                     all_vol_rows.append((symbol, tf, ts, val))
-            # bb_width_last20 (only for CORE, but can be extended)
-            if sym_key == "CORE":
+            # bb_width_last20 (only for ETH, but can be extended)
+            if sym_key == "ETH":
                 bb_widths = get_last_n_indicators(symbol, tf, n_bb_width, "bb_width", ex)
                 if tf not in ctx["bb_series"]:
                     ctx["bb_series"][tf] = {}
@@ -68,7 +68,7 @@ def backfill_vol_state_and_bbwidth(symbols=["CORE/USDT:USDT", "ETH/USDT:USDT"], 
                     val = indicators.get("bb_width")
                     if val is not None:
                         all_bb_rows.append((symbol, tf, ts, val))
-            logging.info(f"{symbol} {tf}: max_ratio_last{n_max_ratio}={max_ratios[-5:]}, bb_width_last{n_bb_width}={bb_widths[-5:] if sym_key=='CORE' else 'N/A'}")
+            logging.info(f"{symbol} {tf}: max_ratio_last{n_max_ratio}={max_ratios[-5:]}, bb_width_last{n_bb_width}={bb_widths[-5:] if sym_key=='ETH' else 'N/A'}")
     # Write all vol_state rows to DB
     write_vol_state_rows(all_vol_rows)
     write_bb_width_rows(all_bb_rows)
