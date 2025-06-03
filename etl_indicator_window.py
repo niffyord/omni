@@ -1,3 +1,5 @@
+"""ETL job to compute a rolling window of indicators for each timeframe.
+Results are stored in the market_indicators table for use by tools like get_last_n_indicators."""
 import os, json, math, asyncio, logging
 from typing import List
 from dotenv import load_dotenv

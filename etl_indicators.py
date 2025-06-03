@@ -21,7 +21,6 @@ SYMBOL         = os.getenv("SYMBOL", "CORE/USDT:USDT")
 TF_LIST        = ["1m", "5m", "15m", "1h", "4h", "1d"]
 LIMIT          = 200
 HISTORY_LENGTH = int(os.getenv("HISTORY_LENGTH", 200))  # Increased from 7 to 30 for richer historical context
-LOOKBACK_WINDOW = int(os.getenv("LOOKBACK_WINDOW", 30))  # uniform model look-back
 
 DB_URL         = os.getenv("TIMESCALEDB_URL")
 API_KEY        = os.getenv("BYBIT_API_KEY")
