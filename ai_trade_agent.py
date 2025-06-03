@@ -24,7 +24,7 @@ except ImportError:
 import ccxt
 # Updated agents import for AgentHooks, RunContextWrapper, trace, Tool
 from agents import Agent, ModelSettings, Runner, function_tool, handoff, AgentHooks, RunContextWrapper, trace, Tool
-from timescaledb_tools import _get_latest_indicators_multi
+from timescaledb_tools import _get_latest_indicators_multi, get_last_n_indicators
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from tools import get_orderbook_snapshot, get_derivatives_metrics
 
@@ -298,6 +298,7 @@ def get_market_context(symbol: str, timeframes: list[str]) -> dict:
       • ETH context: per-timeframe *summary* objects from the ETH ETL pipeline (key=value string of all ETH metrics; raw numbers stripped – see etl_eth_context.py)
       • full order‑book snapshot
       • derivatives / funding metrics
+      • indicator_window: last 30 bars for each timeframe via ``get_last_n_indicators``
     Always returns a dict; embeds error messages if any sub‑call fails.
     ETH context is provided under the 'eth_context' key as:
       {'eth_context': { timeframe: { 'timestamp': int, 'summary': str } }}
@@ -557,11 +558,12 @@ Mission — four mandatory steps
    ✓ rationale ≤ 650 chars; no tool output or stack traces.  
    If any check fails, fix and re-generate before printing.
 
-Available Data via get_market_context  
-• Multi-TF indicators (1 m … 1 d): RSI, ADX, MA slopes, VWAP dev, ATR, BB width, OBV, etc.  
-• Cross-asset context: ETH, CORE correlations & spreads.  
-• Order-book: imbalance, depth curve, micro-price, liquidity lambda, spread.  
-• Derivatives: funding, OI deltas/Z-scores, long/short skew, liquidations.  
+Available Data via get_market_context
+• Multi-TF indicators (1 m … 1 d): RSI, ADX, MA slopes, VWAP dev, ATR, BB width, OBV, etc.
+• 30-bar indicator history for each timeframe (``indicator_window``)
+• Cross-asset context: ETH, CORE correlations & spreads.
+• Order-book: imbalance, depth curve, micro-price, liquidity lambda, spread.
+• Derivatives: funding, OI deltas/Z-scores, long/short skew, liquidations.
 • Volatility regimes & realised-vol history.
 
 Output schema
@@ -601,9 +603,10 @@ technical_analyst = Agent(
     handoff_description="Analyses data and hands off a trade idea.",
     handoffs=[handoff(execution_agent, on_handoff=on_ta_handoff, input_filter=handoff_filters.remove_all_tools)],
     output_type=TechnicalAnalystOutput,
-    instructions=technical_analyst_instructions,
+   instructions=technical_analyst_instructions,
    tools=[
         get_market_context,
+        get_last_n_indicators,
         CodeInterpreterTool(tool_config={"type": "code_interpreter", "container": {"type": "auto"}})
     ],
     model="gpt-4.1", # Kept gpt-4.1 as it needs to produce complex analysis
