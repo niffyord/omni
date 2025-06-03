@@ -68,18 +68,13 @@ drain_time_hist_ask = deque()
 # Institutional-grade microstructure tracking
 price_change_hist = deque(maxlen=500)  # (ts, price_change, volume) for Kyle's Lambda
 kyle_lambda_hist = deque(maxlen=100)  # Historical Kyle's Lambda values
-trade_impact_hist = deque(maxlen=200)  # (ts, price_before, price_after, volume, side)
 spread_hist = deque(maxlen=500)  # (ts, spread) for Roll's decomposition
 
 # Liquidity Provider Behavior tracking
 quote_refresh_hist = deque(maxlen=500)  # (ts, level, side, old_size, new_size, price)
-liquidity_migration_hist = deque(maxlen=300)  # Track cross-level liquidity movements
-market_maker_quotes = {}  # Track quote patterns by price level
 
 # Market Maker Inventory estimation
 mm_inventory_hist = deque(maxlen=200)  # Estimated market maker inventory changes
-inventory_pressure_hist = deque(maxlen=100)  # Inventory-driven price pressure signals
-skew_adjustment_hist = deque(maxlen=150)  # Track optimal skew adjustments
 
 # ---------------- helpers ----------------
 def depth_profile(side, mid, bin_bp=5, max_bp=100):
@@ -430,8 +425,6 @@ async def stream_orderbook(exchange):
         # Expose to snapshot for TA agent
         snap = {} if 'snap' not in locals() else snap
         snap["ofi_delta_ewma"] = ofi_ewma  # keep this
-        # Only call detect_liquidity_provider_behavior once per loop
-        lp_behavior = detect_liquidity_provider_behavior(prev_book_snapshot, prev_book, quote_refresh_hist)
         # Update prev_book at end of loop
         prev_book = prev_book_snapshot
 
@@ -554,6 +547,8 @@ async def stream_orderbook(exchange):
             "slope_in": slope_in,
             "slope_out": slope_out,
             "depth_convexity": depth_convexity,
+            "avg_trade_size": avg_sz,
+            "trades_per_sec": tps,
         })
 
         # --- full depth profile -------------------------------------------------
@@ -579,6 +574,7 @@ async def stream_orderbook(exchange):
             "timestamp": ts,
             "mid_price": mid,
             "best_bid": best_bid, "best_ask": best_ask, "spread": spread,
+            "best_bid_size": bid_sz_top, "best_ask_size": ask_sz_top,
             "bid_ask_imbalance_pct": imbalance, "ofi_delta": ofi_delta,
             "micro_price": micro_px,
             f"cum_bid_vol_{int(BPS_LIQUIDITY)}bps": cum_bid_tiers[DEPTH_TIERS.index(BPS_LIQUIDITY) if BPS_LIQUIDITY in DEPTH_TIERS else min(range(len(DEPTH_TIERS)), key=lambda i: abs(DEPTH_TIERS[i]-BPS_LIQUIDITY))],
@@ -607,6 +603,7 @@ async def stream_orderbook(exchange):
             "buy_volume_last_win": buy_sz,
             "sell_volume_last_win": sell_sz,
             "trade_win_sec": TRADE_WIN_MS // 1000,
+            "history": list(history_buffer),
         }
 
         # Track price changes for Kyle's Lambda calculation
