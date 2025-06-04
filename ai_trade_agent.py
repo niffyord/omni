@@ -51,7 +51,7 @@ logger = logging.getLogger("OmniTrader")
 
 # Configure the OpenAI client similar to examples/model_providers
 # Increase timeout and retries to reduce transient connection errors
-openai_client = AsyncOpenAI(timeout=120.0, max_retries=3)
+openai_client = AsyncOpenAI(timeout=420.0, max_retries=5)
 set_default_openai_client(openai_client)
 # Use the OpenAI Responses API so hosted tools like the code interpreter work
 set_default_openai_api("responses")
@@ -596,9 +596,8 @@ Guiding principles
 • No static thresholds — rely on computed probabilities.
 • Perform every calculation in the Python code interpreter.
 • Aim for the best entry price rather than chasing moves.
-• After self-QA, output exactly one JSON object using the schema.
-• Immediately call the handoff tool with that JSON and nothing else.
-• Never finish without a JSON signal; if analysis fails return the WAIT JSON and still handoff.
+• Print the JSON, return it verbatim, call the handoff tool. Nothing more.
+
 
 Think rigorously → Model quantitatively → Self-QA → Emit JSON → Handoff.
 """
