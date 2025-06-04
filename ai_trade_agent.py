@@ -23,7 +23,20 @@ except ImportError:
 
 import ccxt
 # Updated agents import for AgentHooks, RunContextWrapper, trace, Tool
-from agents import Agent, ModelSettings, Runner, function_tool, handoff, AgentHooks, RunContextWrapper, trace, Tool
+from agents import (
+    Agent,
+    ModelSettings,
+    Runner,
+    function_tool,
+    handoff,
+    AgentHooks,
+    RunContextWrapper,
+    trace,
+    Tool,
+    set_default_openai_client,
+    set_default_openai_api,
+)
+from openai import AsyncOpenAI
 from timescaledb_tools import _get_latest_indicators_multi
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from tools import get_orderbook_snapshot, get_derivatives_metrics
@@ -36,7 +49,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("OmniTrader")
 
-
+# Configure the OpenAI client similar to examples/model_providers
+# Increase timeout and retries to reduce transient connection errors
+openai_client = AsyncOpenAI(timeout=120.0, max_retries=3)
+set_default_openai_client(openai_client)
+# Use the OpenAI Responses API so hosted tools like the code interpreter work
+set_default_openai_api("responses")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
