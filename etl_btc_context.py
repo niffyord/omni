@@ -52,6 +52,8 @@ LIMIT         = int(os.getenv("BTC_LIMIT", 400))  # more bars for vol calcs
 DB_URL        = os.getenv("TIMESCALEDB_URL")
 TABLE         = os.getenv("BTC_TABLE", "market_indicators")  # share table
 LOOP_INTERVAL = int(os.getenv("BTC_LOOP_INTERVAL", 60))
+# Limit concurrent HTTP requests to avoid exhausting connection pool
+MAX_CONCURRENCY = int(os.getenv("BTC_MAX_CONCURRENCY", 8))
 
 TS_NOW = lambda: int(datetime.now(timezone.utc).timestamp() * 1000)
 
@@ -61,6 +63,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger("BTC_ETL")
+
+# Limit asynchronous fetch concurrency
+SEM = asyncio.Semaphore(MAX_CONCURRENCY)
 
 # ─── CCXT EXCHANGE ───────────────────────────────────────────────────────
 EX = ccxt.bybit(
@@ -72,6 +77,16 @@ EX = ccxt.bybit(
         "timeout": 60_000,
     }
 )
+
+# Expand requests connection pool to reduce 'connection pool is full' warnings
+try:
+    import requests
+    adapter = requests.adapters.HTTPAdapter(pool_maxsize=max(10, MAX_CONCURRENCY * 2))
+    if hasattr(EX, "session") and isinstance(EX.session, requests.Session):
+        EX.session.mount("https://", adapter)
+        EX.session.mount("http://", adapter)
+except Exception:
+    pass
 
 # ─── TIMESCALEDB HELPERS ────────────────────────────────────────────────
 
@@ -451,8 +466,12 @@ async def cycle_once():
             tf_ready.append(tf)
     # --- parallel fetch for ETH and BTC OHLCV ---
     async def fetch_ohlcv(symbol, tf):
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: EX.fetch_ohlcv(symbol, tf, limit=LIMIT, params={"recvWindow": 60_000}))
+        async with SEM:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None,
+                lambda: EX.fetch_ohlcv(symbol, tf, limit=LIMIT, params={"recvWindow": 60_000}),
+            )
     eth_tasks = {tf: asyncio.create_task(fetch_ohlcv(ETH_SYMBOL, tf)) for tf in tf_ready}
     btc_tasks = {tf: asyncio.create_task(fetch_ohlcv(SYMBOL, tf)) for tf in tf_ready}
     rows = []
