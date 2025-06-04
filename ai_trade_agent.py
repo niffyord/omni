@@ -53,7 +53,8 @@ logger = logging.getLogger("OmniTrader")
 # Increase timeout and retries to reduce transient connection errors
 openai_client = AsyncOpenAI(timeout=120.0, max_retries=3)
 set_default_openai_client(openai_client)
-set_default_openai_api("chat_completions")
+# Use the OpenAI Responses API so hosted tools like the code interpreter work
+set_default_openai_api("responses")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
