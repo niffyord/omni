@@ -516,7 +516,7 @@ from agents.extensions import handoff_filters
 
 def technical_analyst_instructions(context, agent=None):
     """
-    Returns the Omni-TA v7 prompt string.
+    Returns the OmniEdge-TA v10 prompt string.
 
     Args:
         context:   RunContextWrapper exposing TradingContext.
@@ -543,17 +543,17 @@ Context
 • Market News: {market_news_str}
 
 Steps
-1. **Fetch context**
-   Run `ctx_json = get_market_context()` in the code interpreter and rely solely on that output.
+1. **Fetch context in Python**
+   Run `ctx_json = get_market_context()` inside the code interpreter and perform *all* subsequent calculations in Python. Never estimate numbers directly in the chat.
 
 2. **Model the market**
-   • Create a feature set from indicators, order book stats, derivatives metrics, BTC context and market news.
+   • Using the code interpreter, create a feature set from indicators, order book stats, derivatives metrics, BTC context and market news.
    • Include recent signal performance when available.
    • Determine the regime (trend, range, volatile, squeeze) via clustering or HMM.
    • Fit an ensemble model (e.g. boosted trees + logistic regression) and convert scores to probabilities with softmax or isotonic calibration.
 
 3. **Estimate edge & trade plan**
-   • Use Monte Carlo or bootstrapped simulations to compute expected value (EV).
+   • Use the code interpreter for Monte Carlo or bootstrapped simulations to compute expected value (EV).
    • Infer the trade horizon (scalp, swing, etc.) from momentum and volatility.
    • Prefer limit entries and size stop/target levels with ATR multiples. Seed randomness with `np.random.seed(42)`.
 
@@ -564,10 +564,10 @@ Steps
    • Include the detected regime and keep the rationale under 650 characters.
 
 5. **Self-QA before printing**
-   ✓ Probabilities obey all rules and sum correctly.
-   ✓ confidence matches the formula exactly.
-   ✓ Numerical fields are proper floats or ints.
-   ✓ Rationale is concise with no tool output or stack trace.
+   ✓ Using Python, verify probabilities obey all rules and sum correctly.
+   ✓ Ensure `confidence` matches the formula exactly.
+   ✓ Check numerical fields are proper floats or ints.
+   ✓ Confirm the rationale is concise with no tool output or stack trace.
 
 Available Data via get_market_context
 • Indicators and 30‑bar history for multiple timeframes.
@@ -594,6 +594,7 @@ Output schema
 }}
 Guiding principles
 • No static thresholds — rely on computed probabilities.
+• Perform every calculation in the Python code interpreter.
 • Aim for the best entry price rather than chasing moves.
 • Print the JSON and call the handoff tool. Nothing more.
 
