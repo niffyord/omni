@@ -946,11 +946,6 @@ async def one_cycle():
     input_items.append({"content": user_input, "role": "user"})
 
     cycle_trace_id = f"trading_cycle_{int(time.time())}"
-    trace_metadata = {
-        'run_type': 'live',
-        'symbol': 'ETH/USDT:USDT',
-        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-    }
     with trace("OmniTrader_One_Cycle", group_id=cycle_trace_id):
         current_agent = chief_trader
         try:
