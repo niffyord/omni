@@ -570,18 +570,20 @@ Mission — four mandatory steps
          BUY  → bull_prob > sideways_prob  
          SELL → bear_prob > sideways_prob  
          Otherwise → signal = HOLD (entry/SL/TP = null).  
-   • confidence =  
-         int( 100 * max(bull_prob, bear_prob) * abs(ev) / (abs(ev)+1) )  
-     (so certainty grows with both directional conviction and EV).  
+   • confidence =
+        int( 100 * max(bull_prob, bear_prob) * abs(ev) / (abs(ev)+1) )
+    (so certainty grows with both directional conviction and EV). Use this
+    formula verbatim—do not improvise—and set `confidence` to this value.
    • ev = expected % return (4 decimals).
    • Keep ATR-based risk/reward sensible (aim ≥ 2:1 unless vol is ultra-low) and plan for a limit entry price whenever possible.
    • Mention the trade horizon (scalp, swing, etc.) in the rationale.
 
-4. Self-QA checklist (execute in python immediately before printing)  
-   ✓ Probabilities satisfy all rules above and sum within 0.01 of 1.0.  
-   ✓ If signal is BUY or SELL, its probability > sideways_prob.  
-   ✓ Numerical fields are floats / ints, not strings.  
-   ✓ rationale ≤ 650 chars; no tool output or stack traces.  
+4. Self-QA checklist (execute in python immediately before printing)
+   ✓ Probabilities satisfy all rules above and sum within 0.01 of 1.0.
+   ✓ If signal is BUY or SELL, its probability > sideways_prob.
+   ✓ confidence equals int(100 * max(bull_prob, bear_prob) * abs(ev) / (abs(ev)+1)).
+   ✓ Numerical fields are floats / ints, not strings.
+   ✓ rationale ≤ 650 chars; no tool output or stack traces.
    If any check fails, fix and re-generate before printing.
 
 Available Data via get_market_context
