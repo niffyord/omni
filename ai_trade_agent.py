@@ -533,12 +533,14 @@ Mission — four mandatory steps
      (no hard-coded rule tables).  
    • Feature engineering, back-tests, Monte-Carlo scenarios, risk metrics — all inside python.
    • Use the look-back data to capture near-term momentum and broader regime shifts.
+   • Decide whether the setup is an intraday scalp, a swing trade or something else, and tailor EV calculations to that horizon.
+   • Seek an optimal entry zone (prefer limit orders or pullbacks) before committing to market entry.
    • Seed any stochastic operations (e.g., `np.random.seed(42)`) to keep results reproducible across cycles.
-   • Factor in `last_signal` and `last_position_summary` when designing the edge to see how previous siganl and trade performed.  
+   • Factor in `last_signal` and `last_position_summary` when designing the edge to see how previous siganl and trade performed.
    • Over-fit guards: walk-forward split, k-fold CV, AIC/BIC, or similar.  Note your safeguard briefly in the rationale.
 
-3. Produce the JSON object below and `print` it — **nothing else**.  
-   • signal ∈ {{BUY, SELL, HOLD}}.  
+  3. Produce the JSON object below and `print` it — **nothing else**.
+   • signal ∈ {{BUY, SELL, HOLD}} (or WAIT if tools fail). Choose whichever fits the analysis and horizon.
    • Probabilities must obey:  
      – Sum ≈ 1.00 (±0.01).  
      – bull_case.prob ≥ 0.05 and bear_case.prob ≥ 0.05 **unless signal = HOLD**.  
@@ -550,8 +552,9 @@ Mission — four mandatory steps
    • confidence =  
          int( 100 * max(bull_prob, bear_prob) * abs(ev) / (abs(ev)+1) )  
      (so certainty grows with both directional conviction and EV).  
-   • ev = expected % return (4 decimals).  
-   • Keep ATR-based risk/reward sensible (aim ≥ 2:1 unless vol is ultra-low).
+   • ev = expected % return (4 decimals).
+   • Keep ATR-based risk/reward sensible (aim ≥ 2:1 unless vol is ultra-low) and plan for a limit entry price whenever possible.
+   • Mention the trade horizon (scalp, swing, etc.) in the rationale.
 
 4. Self-QA checklist (execute in python immediately before printing)  
    ✓ Probabilities satisfy all rules above and sum within 0.01 of 1.0.  
@@ -590,6 +593,7 @@ Guiding ethos
 • Sideways probability may rise when evidence conflicts, but never reach certainty.
 • Every number must trace back to an actual computation.
 • Print the JSON, return it verbatim, call the handoff tool. Nothing more.
+• Always strive for the best possible entry price rather than blindly jumping in.
 
 Think freely → Validate quantitatively → Self-QA → Emit JSON → Handoff.
 """
