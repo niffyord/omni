@@ -508,9 +508,11 @@ def technical_analyst_instructions(context, agent=None):
 
     last_signal           = getattr(ctx, "last_signal", None)
     last_position_summary = getattr(ctx, "last_position_summary", None)
+    market_news           = getattr(ctx, "market_news", None)
 
     last_signal_str           = json.dumps(last_signal, indent=2)           if last_signal else "None"
     last_position_summary_str = json.dumps(last_position_summary, indent=2) if last_position_summary else "None"
+    market_news_str = json.dumps(market_news, indent=2) if market_news else "None"
 
     # f-string; double braces {{ }} to render literals inside prompt
     return f"""
@@ -518,8 +520,9 @@ You are Omni-TA v9 plus — a self-directed quantitative oracle.
 Your sole task is to fuse all available information into one probability-weighted trade verdict for the current symbol.
 
 Context
-• Last Signal: {last_signal_str}  
+• Last Signal: {last_signal_str}
 • Last Position: {last_position_summary_str}
+• Market News: {market_news_str}
 
 Mission — four mandatory steps
 1. Code Interpreter: the first executable line **must** be  
@@ -536,7 +539,7 @@ Mission — four mandatory steps
    • Decide whether the setup is an intraday scalp, a swing trade or something else, and tailor EV calculations to that horizon.
    • Seek an optimal entry zone (prefer limit orders or pullbacks) before committing to market entry.
    • Seed any stochastic operations (e.g., `np.random.seed(42)`) to keep results reproducible across cycles.
-   • Factor in `last_signal` and `last_position_summary` when designing the edge to see how previous siganl and trade performed.
+   • Factor in `last_signal`, `last_position_summary`, and `market_news` when designing the edge to see how previous siganl and trade performed and incorporate current market sentiment.
    • Over-fit guards: walk-forward split, k-fold CV, AIC/BIC, or similar.  Note your safeguard briefly in the rationale.
 
   3. Produce the JSON object below and `print` it — **nothing else**.
@@ -658,6 +661,7 @@ Think silently; do NOT reveal chain-of-thought.
 
 ### CONTEXT
 • The previous signal is available as `context.last_signal` (a dict or None).
+• Latest market news summary available as `context.market_news` (a dict or None).
 • REQUEST_SIGNAL: string with symbol, timeframes, extras.
 
 ### TASK
@@ -774,6 +778,19 @@ def extract_json_block(text):
 
 LAST_SIGNAL = load_last_signal()
 
+# Path to the most recent crypto news summary JSON
+CRYPTO_NEWS_FILE = os.getenv("CRYPTO_NEWS_FILE", "crypto_market_news/outputs/crypto_news.json")
+
+def load_market_news(path=None):
+    """Load the latest crypto market news JSON output."""
+    if path is None:
+        path = CRYPTO_NEWS_FILE
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
 def pretty_print_last_signal(path=None):
     if path is None:
         path = LAST_SIGNAL_FILE
@@ -820,6 +837,7 @@ from pydantic import BaseModel
 class TradingContext(BaseModel):
     last_signal: dict | None = None
     last_position_summary: dict | None = None  # Persisted last position/order summary with status
+    market_news: dict | None = None  # Latest crypto market news summary
     # Add more shared state/config as needed
 
 POSITION_SUMMARY_FILE = os.getenv("POSITION_SUMMARY_FILE", "position_summary.json")
@@ -900,7 +918,8 @@ async def one_cycle():
     input_items = []
     context = TradingContext(
         last_signal=LAST_SIGNAL,
-        last_position_summary=last_position_summary
+        last_position_summary=last_position_summary,
+        market_news=load_market_news(),
     )
     user_input = (
         "REQUEST_SIGNAL:symbol=ETH/USDT:USDT tfs=[1m,5m,15m,1h,4h,1d] "
