@@ -125,6 +125,7 @@ def ensure_table():
 def get_liq_totals(minutes: int = 5):
     now = int(datetime.now(timezone.utc).timestamp())
     cutoff = now - minutes * 60
+    # Bybit v5: 'S' == 'Buy' means short liquidated (price rising), 'Sell' means long liquidated (price falling)
     long_liq = sum(size for ts, side, size in LIQUIDATION_EVENTS if side == "Sell" and ts >= cutoff)
     short_liq = sum(size for ts, side, size in LIQUIDATION_EVENTS if side == "Buy" and ts >= cutoff)
     return long_liq, short_liq
@@ -162,22 +163,28 @@ def format_orderbook_block(snap: dict) -> str:
 
 
 def format_flow_block(snap: dict) -> str:
-    buy_qty = snap.get("buy_volume_last_win")
-    sell_qty = snap.get("sell_volume_last_win")
-    avg_size = snap.get("avg_trade_size")
-    net = None
-    imb_perc = None
-    if buy_qty is not None and sell_qty is not None:
-        net = buy_qty - sell_qty
-        imb_perc = 100 * net / max(buy_qty + sell_qty, 1)
+    # Use robust defaults if keys are missing
+    buy_qty = snap.get("buy_volume_last_win") or 0
+    sell_qty = snap.get("sell_volume_last_win") or 0
+    avg_size = snap.get("avg_trade_size") or 0
+    net = buy_qty - sell_qty
+    imb_perc = 100 * net / max(buy_qty + sell_qty, 1) if (buy_qty or sell_qty) else 0
 
+    # Token hygiene: round to 2 decimals for percentages, 1 for size
     lines = ["## Flow 60 s"]
-    imb_str = f"{imb_perc:.2f}" if imb_perc is not None else "N/A"
+    imb_str = f"{imb_perc:.2f}"
+    block_flag = "No"  # Placeholder for block-trade detection
     lines.append(
-        f"buys:{buy_qty} sells:{sell_qty} net:{net} imb%:{imb_str} avgSize:{avg_size}"
+        f"buys:{short_num(buy_qty)} sells:{short_num(sell_qty)} net:{short_num(net)} imb%:{imb_str} avgSize:{avg_size:.1f} block:{block_flag}"
     )
     return "\n".join(lines)
 
+
+def last(x):
+    return x.iloc[-1] if hasattr(x, 'iloc') else x[-1]
+
+def pos(x, n):
+    return x.iloc[n] if hasattr(x, 'iloc') else x[n]
 
 def compute_indicators(df: pd.DataFrame) -> dict:
     if len(df) < 200:
@@ -188,22 +195,30 @@ def compute_indicators(df: pd.DataFrame) -> dict:
     low = df["low"].astype(float)
     vol = df["vol"].astype(float)
 
-    rsi = talib.RSI(close, 14).iloc[-1]
+    rsi = last(talib.RSI(close, 14))
     macd, macd_sig, macd_hist = talib.MACD(close, 12, 26, 9)
-    ema20 = talib.EMA(close, 20).iloc[-1]
-    ema50 = talib.EMA(close, 50).iloc[-1]
-    ema200 = talib.EMA(close, 200).iloc[-1]
-    atr14 = talib.ATR(high, low, close, 14).iloc[-1]
+    macd_line = last(macd)
+    macd_hist_v = last(macd_hist)
+    ema20 = last(talib.EMA(close, 20))
+    ema50 = last(talib.EMA(close, 50))
+    ema200 = last(talib.EMA(close, 200))
+    atr14 = last(talib.ATR(high, low, close, 14))
     upper, middle, lower = talib.BBANDS(close, 20)
-    bb_width = (upper.iloc[-1] - lower.iloc[-1]) / middle.iloc[-1] * 100
+    bb_width = (last(upper) - last(lower)) / last(middle) * 100
     vwap = ((high + low + close) / 3 * vol).sum() / (vol.sum() or 1)
     obv = talib.OBV(close, vol)
-    obv_slope = obv.iloc[-1] - obv.iloc[-6] if len(obv) >= 6 else 0
+    if len(obv) >= 6:
+        if hasattr(obv, 'iloc'):
+            obv_slope = last(obv) - obv.iloc[len(obv)-6]
+        else:
+            obv_slope = last(obv) - obv[-6]
+    else:
+        obv_slope = 0
     last_close = close.iloc[-1]
     return {
         "RSI_14": rsi,
-        "MACD_line": macd.iloc[-1],
-        "MACD_hist": macd_hist.iloc[-1],
+        "MACD_line": macd_line,
+        "MACD_hist": macd_hist_v,
         "EMA_20": (last_close / ema20 - 1) * 100,
         "EMA_50": (last_close / ema50 - 1) * 100,
         "EMA_200": (last_close / ema200 - 1) * 100,
