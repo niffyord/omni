@@ -37,9 +37,7 @@ from agents import (
     set_default_openai_api,
 )
 from openai import AsyncOpenAI
-from timescaledb_tools import _get_latest_indicators_multi
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
-from tools import get_orderbook_snapshot, get_derivatives_metrics
 
 # Configure logging
 logging.basicConfig(
@@ -309,68 +307,41 @@ def get_current_price(symbol: str) -> float:
 #  ONE‑SHOT DATA TOOL  →  replaces 3 separate calls
 # ──────────────────────────────────────────────────────────────────────────────
 @function_tool
-def get_market_context(symbol: str, timeframes: list[str]) -> dict:
-    """
-    Fetches all required market context in a single round‑trip:
-      • multi‑TF indicators (for all timeframes given) for the target symbol (e.g. ETH/USDT:USDT)
-      • BTC context: per-timeframe *summary* objects from the BTC ETL pipeline (key=value string of all BTC metrics; raw numbers stripped – see etl_btc_context.py)
-      • full order‑book snapshot
-      • derivatives / funding metrics
-      • indicator_window: last 30 bars for each timeframe via ``get_last_n_indicators``
-    Always returns a dict; embeds error messages if any sub‑call fails.
-    BTC context is provided under the 'btc_context' key as:
-      {'btc_context': { timeframe: { 'timestamp': int, 'summary': str } }}
+def get_market_context(symbol: str | None = None) -> dict:
+    """Return the latest market feed text from ``etl_market_feed``.
+
+    The ETL stores a concise snapshot of market conditions in the
+    ``llm_market_feed`` table. This helper fetches the newest row for the
+    requested symbol and returns it as a JSON object.
     """
     if not symbol:
         symbol = "ETH/USDT:USDT"
-    if not timeframes:
-        timeframes = ["1m", "5m", "15m", "1h", "4h", "1d"]
 
-    ctx = {"symbol": symbol}
-    try:
-        ctx["indicators"] = _get_latest_indicators_multi(symbol, timeframes)
-    except Exception as e:
-        ctx["indicators_error"] = str(e)
+    import psycopg2
+    from dotenv import load_dotenv
 
-    # --- Historical BB width series for BTC/ETH, all TFs ---
-    try:
-        import timescaledb_tools
-        # Only include indicator_window (no bb_series, no vol_state)
-        win = {}
-        window_size = int(os.getenv("INDICATOR_WINDOW_SIZE", 5))
-        for tf in timeframes:
-            win[tf] = timescaledb_tools.get_last_n_indicators_py(symbol, tf, window_size)
-        ctx["indicator_window"] = win
-    except Exception as e:
-        ctx["history_series_error"] = str(e)
-
-
-    # --- BTC context: multi-TF, cross-asset, volatility, etc ---
-    try:
-        btc_tf = timeframes
-        btc_symbol = "BTC/USDT:USDT"
-        btc_context = _get_latest_indicators_multi(btc_symbol, btc_tf)
-        btc_context_summary = {}
-        for tf, data in btc_context.items():
-            btc_context_summary[tf] = {
-                "timestamp": data["timestamp"],
-                "summary": "&".join(f"{k}={v}" for k, v in data.items() if k != "timestamp")
-            }
-        ctx["btc_context"] = btc_context_summary
-    except Exception as e:
-        ctx["btc_context_error"] = str(e)
+    load_dotenv()
+    db_url = os.getenv("TIMESCALEDB_URL")
+    if not db_url:
+        return {"error": "TIMESCALEDB_URL not set"}
 
     try:
-        ctx["orderbook"] = get_orderbook_snapshot(symbol)
-    except Exception as e:
-        ctx["orderbook_error"] = str(e)
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT timestamp, feed FROM llm_market_feed WHERE symbol = %s ORDER BY timestamp DESC LIMIT 1",
+            (symbol,),
+        )
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+    except Exception as e:  # pragma: no cover - DB errors
+        return {"symbol": symbol, "error": str(e)}
 
-    try:
-        ctx["derivatives"] = get_derivatives_metrics(symbol)
-    except Exception as e:
-        ctx["derivatives_error"] = str(e)
-
-    return ctx
+    if row:
+        ts, feed = row
+        return {"symbol": symbol, "timestamp": int(ts), "feed": feed}
+    return {"symbol": symbol, "error": "No market feed data found"}
 
 
 
@@ -547,7 +518,7 @@ Steps
    Run `ctx_json = get_market_context()` inside the code interpreter and perform *all* subsequent calculations in Python. Never estimate numbers directly in the chat.
 
 2. **Model the market**
-   • Using the code interpreter, create a feature set from indicators, order book stats, derivatives metrics, BTC context and market news.
+   • Using the code interpreter, build features from the consolidated market feed and market news.
    • Include recent signal performance when available.
    • Determine the regime (trend, range, volatile, squeeze) via clustering or HMM.
    • Fit an ensemble model (e.g. boosted trees + logistic regression) and convert scores to probabilities with softmax or isotonic calibration.
@@ -570,10 +541,7 @@ Steps
    ✓ Confirm the rationale is concise with no tool output or stack trace.
 
 Available Data via get_market_context
-• Indicators and 30‑bar history for multiple timeframes.
-• Cross‑asset BTC context.
-• Order book and derivative metrics.
-• Volatility regimes and realised volatility.
+• Latest consolidated market feed text from the ``llm_market_feed`` table.
 
 Output schema
 ```json
@@ -670,7 +638,7 @@ Invoke *TechnicalAnalyst* exactly once to generate a fresh trading signal (which
 The handoff to *TechnicalAnalyst* will result in a TechnicalAnalystOutput schema JSON.
 
 ### FAILURE HANDLING
-If any mandatory tool errors occur within *TechnicalAnalyst* (indicators, orderbook_snapshot, derivatives_metrics), *TechnicalAnalyst* itself is instructed to output a specific WAIT signal.
+If any mandatory tool errors occur within *TechnicalAnalyst* (market_feed), *TechnicalAnalyst* itself is instructed to output a specific WAIT signal.
 If *TechnicalAnalyst* fails to produce valid JSON or has other unrecoverable errors, this agent should ensure a fallback.
 If the handoff to *TechnicalAnalyst* ultimately results in an error or invalid output,
 immediately OUTPUT a JSON object conforming to the ChiefTraderFailureOutput schema:
