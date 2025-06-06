@@ -1,6 +1,19 @@
-import os, asyncio, logging, json, threading
+import os, asyncio, logging, json
 from datetime import datetime, timezone
 from collections import deque
+
+
+def short_num(n: float | int | None) -> str:
+    """Return a human-friendly representation of large numbers."""
+    if n is None:
+        return "NA"
+    n = float(n)
+    abs_n = abs(n)
+    if abs_n >= 1_000_000:
+        return f"{n/1_000_000:.2f}M"
+    if abs_n >= 1_000:
+        return f"{n/1_000:.2f}K"
+    return f"{n:.2f}"
 
 import ccxt
 import pandas as pd
@@ -11,37 +24,32 @@ import websockets
 from dotenv import load_dotenv
 
 # --- minimal helpers (standalone) -------------------------------------------
-LIQUIDATION_EVENTS = deque()
+# keep at most ~50k liquidation events (roughly 8 hours at moderate rates)
+LIQUIDATION_EVENTS = deque(maxlen=50_000)
 
-def start_liquidation_listener(symbol: str = "ETHUSDT"):
-    async def listen():
-        url = "wss://stream.bybit.com/v5/public/linear"
-        topic = f"liquidation.{symbol}"
-        async with websockets.connect(url) as ws:
-            await ws.send(json.dumps({"op": "subscribe", "args": [topic]}))
-            while True:
-                msg = await ws.recv()
-                data = json.loads(msg)
-                if "data" in data:
-                    events = data["data"]
-                    if isinstance(events, dict):
-                        events = [events]
-                    for event in events:
-                        try:
-                            ts = int(event["T"]) // 1000
-                            side = event["S"]
-                            size = float(event["v"])
-                            LIQUIDATION_EVENTS.append((ts, side, size))
-                        except (KeyError, ValueError, TypeError):
-                            continue
-                cutoff = int(datetime.now(timezone.utc).timestamp()) - 8 * 3600
-                while LIQUIDATION_EVENTS and LIQUIDATION_EVENTS[0][0] < cutoff:
-                    LIQUIDATION_EVENTS.popleft()
-
-    def run():
-        asyncio.run(listen())
-
-    threading.Thread(target=run, daemon=True).start()
+async def start_liquidation_listener(symbol: str = "ETHUSDT"):
+    url = "wss://stream.bybit.com/v5/public/linear"
+    topic = f"liquidation.{symbol}"
+    async with websockets.connect(url) as ws:
+        await ws.send(json.dumps({"op": "subscribe", "args": [topic]}))
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg)
+            if "data" in data:
+                events = data["data"]
+                if isinstance(events, dict):
+                    events = [events]
+                for event in events:
+                    try:
+                        ts = int(event["T"]) // 1000
+                        side = event["S"]
+                        size = float(event["v"])
+                        LIQUIDATION_EVENTS.append((ts, side, size))
+                    except (KeyError, ValueError, TypeError):
+                        continue
+            cutoff = int(datetime.now(timezone.utc).timestamp()) - 8 * 3600
+            while LIQUIDATION_EVENTS and LIQUIDATION_EVENTS[0][0] < cutoff:
+                LIQUIDATION_EVENTS.popleft()
 
 
 def get_orderbook_snapshot(symbol: str = "ETH/USDT:USDT") -> dict:
@@ -122,7 +130,8 @@ def get_liq_totals(minutes: int = 5):
     return long_liq, short_liq
 
 
-def fetch_ohlcv_df(limit: int = 60) -> pd.DataFrame:
+def fetch_ohlcv_df(limit: int = 200) -> pd.DataFrame:
+    """Fetch recent OHLCV data. Need at least 200 bars for EMA200 warm up."""
     ohlcv = EX.fetch_ohlcv(SYMBOL, "1m", limit=limit)
     df = pd.DataFrame(ohlcv, columns=["ts", "open", "high", "low", "close", "vol"])
     return df
@@ -132,15 +141,17 @@ def format_ohlcv_block(df: pd.DataFrame) -> str:
     lines = ["## OHLCV 1-min (oldest→newest)"]
     for _, row in df.iterrows():
         ts = datetime.fromtimestamp(row["ts"] / 1000, tz=timezone.utc).strftime("%H:%M")
-        lines.append(f"t={ts} | {row['open']:.0f} {row['high']:.0f} {row['low']:.0f} {row['close']:.0f} {row['vol']:.0f}")
+        lines.append(
+            f"t={ts} | {short_num(row['open'])} {short_num(row['high'])} {short_num(row['low'])} {short_num(row['close'])} {short_num(row['vol'])}"
+        )
     return "\n".join(lines)
 
 
 def format_orderbook_block(snap: dict) -> str:
     bids = snap.get("bids", [])[:5]
     asks = snap.get("asks", [])[:5]
-    bid_str = " ".join(f"{b[0]:.0f}/{b[1]:.0f}" for b in bids)
-    ask_str = " ".join(f"{a[0]:.0f}/{a[1]:.0f}" for a in asks)
+    bid_str = " ".join(f"{short_num(b[0])}/{short_num(b[1])}" for b in bids)
+    ask_str = " ".join(f"{short_num(a[0])}/{short_num(a[1])}" for a in asks)
     spread = snap.get("spread")
     imb = snap.get("bid_ask_imbalance_pct")
     lines = ["## OrderBook (now)"]
@@ -155,14 +166,22 @@ def format_flow_block(snap: dict) -> str:
     sell_qty = snap.get("sell_volume_last_win")
     avg_size = snap.get("avg_trade_size")
     net = None
+    imb_perc = None
     if buy_qty is not None and sell_qty is not None:
         net = buy_qty - sell_qty
+        imb_perc = 100 * net / max(buy_qty + sell_qty, 1)
+
     lines = ["## Flow 60 s"]
-    lines.append(f"buys:{buy_qty} sells:{sell_qty} net:{net} avgSize:{avg_size} block:No")
+    lines.append(
+        f"buys:{buy_qty} sells:{sell_qty} net:{net} imb%:{imb_perc:.2f if imb_perc is not None else 'N/A'} avgSize:{avg_size}"
+    )
     return "\n".join(lines)
 
 
 def compute_indicators(df: pd.DataFrame) -> dict:
+    if len(df) < 200:
+        return {}
+
     close = df["close"].astype(float)
     high = df["high"].astype(float)
     low = df["low"].astype(float)
@@ -195,6 +214,9 @@ def compute_indicators(df: pd.DataFrame) -> dict:
 
 
 def format_indicator_block(ind: dict) -> str:
+    if not ind:
+        return "## Indicators (warming up)"
+
     parts = ["## Indicators (latest)"]
     parts.append(
         f"RSI14:{ind['RSI_14']:.2f} MACD:{ind['MACD_line']:.2f}/{ind['MACD_hist']:.2f} "
@@ -234,8 +256,8 @@ def collect_feed_text() -> str:
     flow_block = format_flow_block(ob)
     deriv_block = (
         "## Derivs 5 min\n" +
-        f"OI:{metrics.get('open_interest')} funding:{metrics.get('funding_rate')} " +
-        f"long_liq:{long_liq} short_liq:{short_liq}"
+        f"OI:{short_num(metrics.get('open_interest'))} funding:{metrics.get('funding_rate')} " +
+        f"long_liq:{short_num(long_liq)} short_liq:{short_num(short_liq)}"
     )
     ind_block = format_indicator_block(ind)
     ctx_block = format_context_block()
@@ -253,7 +275,7 @@ def write_row(ts: int, text: str):
 
 async def main_loop():
     ensure_table()
-    start_liquidation_listener(SYMBOL.replace("/USDT:USDT", "USDT"))
+    asyncio.create_task(start_liquidation_listener(SYMBOL.replace("/USDT:USDT", "USDT")))
     while True:
         try:
             text = collect_feed_text()
