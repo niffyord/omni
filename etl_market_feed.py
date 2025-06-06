@@ -172,8 +172,9 @@ def format_flow_block(snap: dict) -> str:
         imb_perc = 100 * net / max(buy_qty + sell_qty, 1)
 
     lines = ["## Flow 60 s"]
+    imb_str = f"{imb_perc:.2f}" if imb_perc is not None else "N/A"
     lines.append(
-        f"buys:{buy_qty} sells:{sell_qty} net:{net} imb%:{imb_perc:.2f if imb_perc is not None else 'N/A'} avgSize:{avg_size}"
+        f"buys:{buy_qty} sells:{sell_qty} net:{net} imb%:{imb_str} avgSize:{avg_size}"
     )
     return "\n".join(lines)
 
@@ -187,22 +188,22 @@ def compute_indicators(df: pd.DataFrame) -> dict:
     low = df["low"].astype(float)
     vol = df["vol"].astype(float)
 
-    rsi = talib.RSI(close, 14)[-1]
+    rsi = talib.RSI(close, 14).iloc[-1]
     macd, macd_sig, macd_hist = talib.MACD(close, 12, 26, 9)
-    ema20 = talib.EMA(close, 20)[-1]
-    ema50 = talib.EMA(close, 50)[-1]
-    ema200 = talib.EMA(close, 200)[-1]
-    atr14 = talib.ATR(high, low, close, 14)[-1]
+    ema20 = talib.EMA(close, 20).iloc[-1]
+    ema50 = talib.EMA(close, 50).iloc[-1]
+    ema200 = talib.EMA(close, 200).iloc[-1]
+    atr14 = talib.ATR(high, low, close, 14).iloc[-1]
     upper, middle, lower = talib.BBANDS(close, 20)
-    bb_width = (upper[-1] - lower[-1]) / middle[-1] * 100
+    bb_width = (upper.iloc[-1] - lower.iloc[-1]) / middle.iloc[-1] * 100
     vwap = ((high + low + close) / 3 * vol).sum() / (vol.sum() or 1)
     obv = talib.OBV(close, vol)
-    obv_slope = obv[-1] - obv[-6] if len(obv) >= 6 else 0
+    obv_slope = obv.iloc[-1] - obv.iloc[-6] if len(obv) >= 6 else 0
     last_close = close.iloc[-1]
     return {
         "RSI_14": rsi,
-        "MACD_line": macd[-1],
-        "MACD_hist": macd_hist[-1],
+        "MACD_line": macd.iloc[-1],
+        "MACD_hist": macd_hist.iloc[-1],
         "EMA_20": (last_close / ema20 - 1) * 100,
         "EMA_50": (last_close / ema50 - 1) * 100,
         "EMA_200": (last_close / ema200 - 1) * 100,
@@ -246,10 +247,15 @@ def format_context_block() -> str:
 
 
 def collect_feed_text() -> str:
+    logging.info("Fetching OHLCV data...")
     df = fetch_ohlcv_df()
+    logging.info("Fetching orderbook snapshot...")
     ob = get_orderbook_snapshot(SYMBOL)
+    logging.info("Computing indicators...")
     ind = compute_indicators(df)
+    logging.info("Fetching derivatives metrics...")
     metrics = get_live_derivatives_metrics(SYMBOL)
+    logging.info("Calculating liquidation totals...")
     long_liq, short_liq = get_liq_totals()
     ohlcv_block = format_ohlcv_block(df)
     orderbook_block = format_orderbook_block(ob)
@@ -283,14 +289,16 @@ async def main_loop():
             write_row(ts, text)
             logging.info("Feed row stored")
         except Exception as e:
-            logging.error(f"feed error: {e}")
+            import traceback
+            logging.error(f"feed error: {e}\n{traceback.format_exc()}")
         await asyncio.sleep(LOOP_INTERVAL)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
+    # Log environment variables for debugging
+    logging.info(f"SYMBOL={SYMBOL} DB_URL={'set' if DB_URL else 'NOT SET'} TABLE={TABLE} LOOP_INTERVAL={LOOP_INTERVAL}")
     try:
         asyncio.run(main_loop())
     except KeyboardInterrupt:
         print("Feed ETL stopped")
-
